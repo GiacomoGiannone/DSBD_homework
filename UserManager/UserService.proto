@@ -16,7 +16,5 @@ service UserService
 {
     rpc AddUser(userRequest) returns (userResponse);
     rpc DeleteUser(userRequest) returns (userResponse);
+    rpc LoginUser(userRequest) returns (userResponse); 
 }
-
-
-
