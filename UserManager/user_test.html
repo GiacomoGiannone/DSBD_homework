@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>User Manager Test</title>
+	<style>
+		body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; color: #111; }
+		h1 { margin-top: 0; }
+		.card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+		.row { display: flex; gap: 12px; flex-wrap: wrap; }
+		label { font-size: 12px; color: #374151; display: block; margin-bottom: 6px; }
+		input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; min-width: 260px; }
+		button { padding: 8px 12px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+		button:disabled { opacity: 0.6; cursor: not-allowed; }
+		.out { white-space: pre-wrap; background: #f9fafb; border: 1px dashed #e5e7eb; padding: 10px; border-radius: 6px; min-height: 40px; }
+		.ok { color: #065f46; }
+		.warn { color: #92400e; }
+		.err { color: #991b1b; }
+	</style>
+	<script>
+		async function api(path, payload, outEl) {
+			outEl.textContent = '...';
+			try {
+				const res = await fetch(path, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload)
+				});
+				const text = await res.text();
+				let body;
+				try { body = JSON.parse(text); } catch { body = { raw: text }; }
+				outEl.textContent = `HTTP ${res.status}\n` + JSON.stringify(body, null, 2);
+				outEl.className = 'out ' + (res.status >= 200 && res.status < 300 ? 'ok' : res.status === 400 || res.status === 409 ? 'warn' : 'err');
+			} catch (e) {
+				outEl.textContent = 'Network error: ' + e;
+				outEl.className = 'out err';
+			}
+		}
+
+		function getVal(id) { return document.getElementById(id).value.trim(); }
+
+		function wire() {
+			// Add User
+			const addBtn = document.getElementById('btn-add');
+			addBtn.addEventListener('click', () => {
+				const email = getVal('add-email');
+				const username = getVal('add-username');
+				const password = document.getElementById('add-password').value; // allow spaces
+				api('/add', { email, username, password }, document.getElementById('out-add'));
+			});
+
+			// Login
+			const loginBtn = document.getElementById('btn-login');
+			loginBtn.addEventListener('click', () => {
+				const email = getVal('login-email');
+				const password = document.getElementById('login-password').value;
+				api('/login', { email, password }, document.getElementById('out-login'));
+			});
+
+			// Delete
+			const delBtn = document.getElementById('btn-del');
+			delBtn.addEventListener('click', () => {
+				const email = getVal('del-email');
+				api('/delete', { email }, document.getElementById('out-del'));
+			});
+		}
+
+		window.addEventListener('DOMContentLoaded', wire);
+	</script>
+	<!-- Questa pagina funziona se servita dallo stesso server Flask (http://localhost:8081/). -->
+	<!-- Se apri come file:// potresti incorrere in CORS. Usa la route / per servirla. -->
+	</head>
+<body>
+	<h1>User Manager Tester</h1>
+	<p>Assicurati che il servizio sia in esecuzione su <code>http://localhost:8081</code>.</p>
+
+	<div class="card">
+		<h2>1) Create User</h2>
+		<div class="row">
+			<div>
+				<label for="add-email">Email (obbligatoria)</label>
+				<input id="add-email" type="email" placeholder="alice@example.com" />
+			</div>
+			<div>
+				<label for="add-username">Username (opzionale, default = email)</label>
+				<input id="add-username" type="text" placeholder="alice" />
+			</div>
+			<div>
+				<label for="add-password">Password</label>
+				<input id="add-password" type="password" placeholder="••••••••" />
+			</div>
+			<div style="align-self: end">
+				<button id="btn-add">Add User</button>
+			</div>
+		</div>
+		<div id="out-add" class="out"></div>
+	</div>
+
+	<div class="card">
+		<h2>2) Login</h2>
+		<div class="row">
+			<div>
+				<label for="login-email">Email</label>
+				<input id="login-email" type="email" placeholder="alice@example.com" />
+			</div>
+			<div>
+				<label for="login-password">Password</label>
+				<input id="login-password" type="password" placeholder="••••••••" />
+			</div>
+			<div style="align-self: end">
+				<button id="btn-login">Login</button>
+			</div>
+		</div>
+		<div id="out-login" class="out"></div>
+	</div>
+
+	<div class="card">
+		<h2>3) Delete</h2>
+		<div class="row">
+			<div>
+				<label for="del-email">Email</label>
+				<input id="del-email" type="email" placeholder="alice@example.com" />
+			</div>
+			<div style="align-self: end">
+				<button id="btn-del">Delete User</button>
+			</div>
+		</div>
+		<div id="out-del" class="out"></div>
+	</div>
+
+</body>
+</html>

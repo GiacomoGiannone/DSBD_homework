@@ -5,7 +5,7 @@ from concurrent import futures
 
 import grpc
 import mysql.connector
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import bcrypt
 
 import UserService_pb2 as pb2
@@ -192,6 +192,12 @@ def http_login():
 
 def serve_http():
 	app.run(host="0.0.0.0", port=HTTP_PORT)
+
+
+# Serve the local HTML tester to avoid CORS issues
+@app.get("/")
+def serve_test_page():
+	return send_from_directory(os.path.dirname(__file__), "user_test.html")
 
 
 if __name__ == "__main__":
