@@ -3,3 +3,4 @@ grpcio
 grpcio-tools
 mysql-connector-python
 python-dotenv
+bcrypt

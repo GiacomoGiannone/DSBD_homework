@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS users
     email VARCHAR(255) PRIMARY KEY,
     username VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL,
-    iban VARCHAR(50) NOT NULL,
-    codice_fiscale VARCHAR(16) NOT NULL
+    iban VARCHAR(50) DEFAULT NULL,
+    codice_fiscale VARCHAR(16) DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS interests
