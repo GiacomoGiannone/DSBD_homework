@@ -28,7 +28,7 @@ def get_connection():
 	return mysql.connector.connect(**DB_CONFIG)
 
 
-def wait_for_db(max_wait_seconds: int = 60):
+def wait_for_db(max_wait_seconds: int = 5):
 	deadline = time.time() + max_wait_seconds
 	last_err = None
 	while time.time() < deadline:
@@ -203,7 +203,7 @@ def serve_test_page():
 if __name__ == "__main__":
 	logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 	try:
-		wait_for_db(120)
+		wait_for_db(5)
 	except Exception as e:
 		logging.error("DB not ready: %s", e)
 		raise
