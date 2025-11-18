@@ -1,0 +1,7 @@
+Flask
+grpcio
+grpcio-tools
+mysql-connector-python
+requests
+schedule
+python-dotenv

@@ -1,1 +1,19 @@
-FROM baseImage
+# Dockerfile per User Manager
+FROM python:3.12-slim
+
+# Impostazioni di lavoro
+WORKDIR /app
+
+# Copia requirements e installazione
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copia tutto il codice
+COPY . .
+
+# Esponi le porte: gRPC + REST
+EXPOSE 50051  
+EXPOSE 8081   
+
+# Comando per partire con il server
+CMD ["python", "user_manager.py"]
