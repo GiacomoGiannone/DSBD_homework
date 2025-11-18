@@ -1,0 +1,94 @@
+version: "3.9"
+
+services:
+  # -------------------------------------------------------
+  # USER DATABASE
+  # -------------------------------------------------------
+  userdb:
+    image: mysql:8.0
+    container_name: userdb
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: userdb
+    ports:
+      - "3307:3306"     # opzionale — solo se vuoi accedere dall'esterno
+    volumes:
+      - userdb_data:/var/lib/mysql
+    networks:
+      - backend
+
+  # -------------------------------------------------------
+  # DATA DATABASE
+  # -------------------------------------------------------
+  datadb:
+    image: mysql:8.0
+    container_name: datadb
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: datadb
+    ports:
+      - "3308:3306"     # opzionale
+    volumes:
+      - datadb_data:/var/lib/mysql
+    networks:
+      - backend
+
+  # -------------------------------------------------------
+  # USER MANAGER MICROSERVICE
+  # -------------------------------------------------------
+  user-manager:
+    build: ./user-manager
+    container_name: user-manager
+    environment:
+      DB_HOST: userdb
+      DB_PORT: 3306
+      DB_NAME: userdb
+      DB_USER: root
+      DB_PASSWORD: root
+    ports:
+      - "50051:50051"   # gRPC
+      - "8081:8081"     # REST test (Postman)
+    depends_on:
+      - userdb
+    networks:
+      - backend
+
+  # -------------------------------------------------------
+  # DATA COLLECTOR MICROSERVICE
+  # -------------------------------------------------------
+  data-collector:
+    build: ./data-collector
+    container_name: data-collector
+    environment:
+      USER_MANAGER_HOST: user-manager
+      USER_MANAGER_PORT: 50051
+
+      DB_HOST: datadb
+      DB_PORT: 3306
+      DB_NAME: datadb
+      DB_USER: root
+      DB_PASSWORD: root
+
+      # openSky credentials (opzionali)
+      OPENSKY_USER: ""
+      OPENSKY_PASS: ""
+    ports:
+      - "8082:8082"     # REST test (Postman)
+    depends_on:
+      - datadb
+      - user-manager
+    networks:
+      - backend
+
+# -------------------------------------------------------
+# VOLUMI PERSISTENTI
+# -------------------------------------------------------
+volumes:
+  userdb_data:
+  datadb_data:
+
+# -------------------------------------------------------
+# RETE INTERNA
+# -------------------------------------------------------
+networks:
+  backend:
