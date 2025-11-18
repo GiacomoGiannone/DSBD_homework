@@ -4,18 +4,16 @@
 
 CREATE TABLE IF NOT EXISTS users
 (
-    email TEXT PRIMARY KEY,
-    username TEXT NOT NULL,
-    iban TEXT NOT NULL,
-    codice_fiscale TEXT NOT NULL
+    email VARCHAR(255) PRIMARY KEY,
+    username VARCHAR(255) NOT NULL,
+    iban VARCHAR(50) NOT NULL,
+    codice_fiscale VARCHAR(16) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS interests
 (
-    email TEXT NOT NULL,
-    airport_code TEXT NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    airport_code VARCHAR(10) NOT NULL,
     PRIMARY KEY (email, airport_code),
-    FOREIGN KEY (email),
-        REFERENCES users(email)
-        ON DELETE CASCADE
+    FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE
 );

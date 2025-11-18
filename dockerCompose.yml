@@ -14,6 +14,7 @@ services:
       - "3307:3306"     # opzionale — solo se vuoi accedere dall'esterno
     volumes:
       - userdb_data:/var/lib/mysql
+      - ./db/user_db_init.sql:/docker-entrypoint-initdb.d/user_db_init.sql
     networks:
       - backend
 
@@ -30,6 +31,7 @@ services:
       - "3308:3306"     # opzionale
     volumes:
       - datadb_data:/var/lib/mysql
+      - ./db/data_db_collector_init.sql:/docker-entrypoint-initdb.d/data_db_collector_init.sql
     networks:
       - backend
 

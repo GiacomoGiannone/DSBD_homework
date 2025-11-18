@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS flights
 (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    airport_code TEXT NOT NULL,
-    flight_number TEXT NOT NULL,
-    departure_arrival_date TEXT NOT NULL
+    airport_code VARCHAR(10) NOT NULL,
+    flight_number VARCHAR(20) NOT NULL,
+    departure_arrival_date DATETIME NOT NULL
 );
