@@ -203,7 +203,7 @@ def serve_test_page():
 if __name__ == "__main__":
 	logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 	try:
-		wait_for_db(5)
+		wait_for_db(120)
 	except Exception as e:
 		logging.error("DB not ready: %s", e)
 		raise
