@@ -39,7 +39,7 @@ services:
   # USER MANAGER MICROSERVICE
   # -------------------------------------------------------
   user-manager:
-    build: ./user-manager
+    build: ./UserManager
     container_name: user-manager
     environment:
       DB_HOST: userdb
@@ -59,7 +59,7 @@ services:
   # DATA COLLECTOR MICROSERVICE
   # -------------------------------------------------------
   data-collector:
-    build: ./data-collector
+    build: ./DataCollector
     container_name: data-collector
     environment:
       USER_MANAGER_HOST: user-manager
