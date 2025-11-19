@@ -1,8 +1,11 @@
---inizializza il DB data collector con la seguente tabella flights:
+/*--inizializza il DB data collector con la seguente tabella flights:
     --id(chiave primaria);
     --airport_code;
     --flight_number;
-    --departure_arrival_date;
+    --departure_arrival_date;*/
+    
+CREATE DATABASE IF NOT EXISTS datadb;
+USE datadb;
 
 CREATE TABLE IF NOT EXISTS flights
 (

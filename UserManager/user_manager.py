@@ -59,27 +59,34 @@ class UserService(pb2_grpc.UserServiceServicer):
 	def AddUser(self, request, context):
 		username = (getattr(request, "username", "") or "").strip()
 		password = getattr(request, "password", "") or ""
-		email = (getattr(request, "email", "") or "").strip() or username
+		email = (getattr(request, "email", "") or "").strip()
 
-		if not email or not password:
-			return pb2.userResponse(status=400, message="email and password required")
+		# Require all three: email, username, password
+		if not email or not username or not password:
+			return pb2.userResponse(status=400, message="email, username and password are required")
 		pwd_hash = hash_password(password)
 
 		try:
 			conn = get_connection()
 			cur = conn.cursor()
-			cur.execute("SELECT email FROM users WHERE email=%s", (email,))
-			if cur.fetchone():
+			# Check email uniqueness (enforced by PK) and also check username to avoid ambiguous logins
+			cur.execute("SELECT 1 FROM users WHERE email=%s", (email,))
+			if cur.fetchone() is not None:
 				cur.close()
 				conn.close()
 				return pb2.userResponse(status=409, message="user already exists")
+			cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
+			if cur.fetchone() is not None:
+				cur.close()
+				conn.close()
+				return pb2.userResponse(status=409, message="username already exists")
 
 			cur.execute(
 				"""
 				INSERT INTO users (email, username, password, iban, codice_fiscale)
 				VALUES (%s, %s, %s, %s, %s)
 				""",
-				(email, username or email, pwd_hash, None, None),
+				(email, username, pwd_hash, None, None),
 			)
 			conn.commit()
 			cur.close()
@@ -91,14 +98,31 @@ class UserService(pb2_grpc.UserServiceServicer):
 
 	def DeleteUser(self, request, context):
 		username = (getattr(request, "username", "") or "").strip()
-		email = (getattr(request, "email", "") or "").strip() or username
-		if not email:
-			return pb2.userResponse(status=400, message="email required")
+		email = (getattr(request, "email", "") or "").strip()
+		if not email and not username:
+			return pb2.userResponse(status=400, message="email or username required")
 		try:
 			conn = get_connection()
 			cur = conn.cursor()
-			cur.execute("DELETE FROM users WHERE email=%s", (email,))
-			affected = cur.rowcount
+			affected = 0
+			if email:
+				cur.execute("DELETE FROM users WHERE email=%s", (email,))
+				affected = cur.rowcount
+			else:
+				# Resolve username -> email (ensure unambiguous)
+				cur.execute("SELECT email FROM users WHERE username=%s", (username,))
+				rows = cur.fetchall()
+				if len(rows) == 0:
+					cur.close()
+					conn.close()
+					return pb2.userResponse(status=404, message="user not found")
+				if len(rows) > 1:
+					cur.close()
+					conn.close()
+					return pb2.userResponse(status=409, message="username not unique")
+				resolved_email = rows[0][0]
+				cur.execute("DELETE FROM users WHERE email=%s", (resolved_email,))
+				affected = cur.rowcount
 			conn.commit()
 			cur.close()
 			conn.close()
@@ -112,14 +136,24 @@ class UserService(pb2_grpc.UserServiceServicer):
 	def LoginUser(self, request, context):
 		username = (getattr(request, "username", "") or "").strip()
 		password = getattr(request, "password", "") or ""
-		email = (getattr(request, "email", "") or "").strip() or username
-		if not email or not password:
-			return pb2.userResponse(status=400, message="email and password required")
+		email = (getattr(request, "email", "") or "").strip()
+		if (not email and not username) or not password:
+			return pb2.userResponse(status=400, message="email or username and password required")
 		try:
 			conn = get_connection()
 			cur = conn.cursor()
-			cur.execute("SELECT password FROM users WHERE email=%s", (email,))
-			row = cur.fetchone()
+			row = None
+			if email:
+				cur.execute("SELECT password FROM users WHERE email=%s", (email,))
+				row = cur.fetchone()
+			else:
+				cur.execute("SELECT password FROM users WHERE username=%s", (username,))
+				rows = cur.fetchall()
+				if len(rows) > 1:
+					cur.close()
+					conn.close()
+					return pb2.userResponse(status=409, message="username not unique")
+				row = rows[0] if rows else None
 			cur.close()
 			conn.close()
 			if not row:
