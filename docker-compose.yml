@@ -72,8 +72,8 @@ services:
       DB_PASSWORD: root
 
       # openSky credentials (opzionali)
-      OPENSKY_USER: "filippograsso22-api-client"
-      OPENSKY_PASS: "Ak6mxZPUFybXhllMLRvRRhruF74BFoOF"
+      OPENSKY_USER: "filippograsso22"
+      OPENSKY_PASS: "Caracalla10"
     ports:
       - "8082:8082"     # REST test (Postman)
     depends_on:
