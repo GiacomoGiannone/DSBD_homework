@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Collector Test</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; color: #111; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; min-width: 260px; }
+    button { padding: 8px 12px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; }
+    .out { white-space: pre-wrap; background: #f9fafb; border: 1px dashed #e5e7eb; padding: 10px; border-radius: 6px; min-height: 40px; }
+  </style>
+  <script>
+    function qs(name) { const u = new URL(window.location.href); return u.searchParams.get(name) || '' }
+    const email = qs('email');
+
+    async function api(path, payload, outEl) {
+      outEl.textContent = '...';
+      try {
+        const res = await fetch(`http://localhost:8082${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const text = await res.text();
+        let body; try { body = JSON.parse(text); } catch { body = { raw: text }; }
+        outEl.textContent = `HTTP ${res.status}\n` + JSON.stringify(body, null, 2);
+      } catch (e) {
+        outEl.textContent = 'Network error: ' + e;
+      }
+    }
+
+    function wire() {
+      document.getElementById('who').textContent = email || '(email non presente)';
+      // Add airport
+      document.getElementById('btn-add-airport').addEventListener('click', () => {
+        const code = document.getElementById('add-code').value.trim().toUpperCase();
+        api('/api/add_airport', { email, code }, document.getElementById('out-add-airport'));
+      });
+      // Remove airport
+      document.getElementById('btn-remove-airport').addEventListener('click', () => {
+        const code = document.getElementById('remove-code').value.trim().toUpperCase();
+        api('/api/remove_airport', { email, code }, document.getElementById('out-remove-airport'));
+      });
+      // List airports
+      document.getElementById('btn-list-airports').addEventListener('click', () => {
+        api('/api/list_airports', { email }, document.getElementById('out-list-airports'));
+      });
+      // Refresh flights (per utente)
+      document.getElementById('btn-refresh').addEventListener('click', () => {
+        api('/api/refresh', { email }, document.getElementById('out-refresh'));
+      });
+      // List flights (opzionale filtro aeroporto)
+      document.getElementById('btn-list-flights').addEventListener('click', () => {
+        const airport = document.getElementById('filter-airport').value.trim().toUpperCase();
+        api('/api/list_flights', { email, airport }, document.getElementById('out-list-flights'));
+      });
+    }
+    window.addEventListener('DOMContentLoaded', wire);
+  </script>
+</head>
+<body>
+  <h1>Data Collector Tester</h1>
+  <p>Utente: <strong id="who"></strong></p>
+
+  <div class="card">
+    <h2>Aggiungi aeroporto</h2>
+    <div class="row">
+      <input id="add-code" placeholder="ICAO (es. LIMC)" />
+      <button id="btn-add-airport">Add Airport</button>
+    </div>
+    <div id="out-add-airport" class="out"></div>
+  </div>
+
+  <div class="card">
+    <h2>Rimuovi aeroporto</h2>
+    <div class="row">
+      <input id="remove-code" placeholder="ICAO (es. LIMC)" />
+      <button id="btn-remove-airport">Remove Airport</button>
+    </div>
+    <div id="out-remove-airport" class="out"></div>
+  </div>
+
+  <div class="card">
+    <h2>Lista aeroporti</h2>
+    <div class="row">
+      <button id="btn-list-airports">List Airports</button>
+    </div>
+    <div id="out-list-airports" class="out"></div>
+  </div>
+
+  <div class="card">
+    <h2>Refresh voli</h2>
+    <div class="row">
+      <button id="btn-refresh">Refresh</button>
+    </div>
+    <div id="out-refresh" class="out"></div>
+  </div>
+
+  <div class="card">
+    <h2>Lista voli</h2>
+    <div class="row">
+      <input id="filter-airport" placeholder="Filtro aeroporto (opzionale)" />
+      <button id="btn-list-flights">List Flights</button>
+    </div>
+    <div id="out-list-flights" class="out"></div>
+  </div>
+
+</body>
+</html>

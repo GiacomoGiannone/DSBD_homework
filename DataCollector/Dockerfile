@@ -10,6 +10,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia tutto il codice
 COPY . .
 
+# Genera gli stub gRPC dal proto
+RUN python -m grpc_tools.protoc -I. \
+	--python_out=. \
+	--grpc_python_out=. \
+	DataCollector.proto
+
 # Esponi la porta REST
 EXPOSE 8082
 

@@ -67,7 +67,26 @@
 					out.className = 'out warn';
 					return;
 				}
-				api('/login', { identity, password }, out);
+					fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identity, password }) })
+					.then(async res => {
+						const text = await res.text();
+						let body; try { body = JSON.parse(text); } catch { body = { raw: text }; }
+						out.textContent = `HTTP ${res.status}\n` + JSON.stringify(body, null, 2);
+						out.className = 'out ' + (res.status >= 200 && res.status < 300 ? 'ok' : res.status === 400 || res.status === 409 ? 'warn' : 'err');
+						if (res.status === 200) {
+								// Preferisci email risolta dal backend; fallback su identity se già un'email
+								const resolved = body.email || (identity.includes('@') ? identity : '');
+								if (resolved) {
+									window.location.href = `http://localhost:8082/data_test?email=${encodeURIComponent(resolved)}`;
+								} else {
+									out.textContent += "\nLogin ok, ma non sono riuscito a determinare l'email.";
+								}
+						}
+					})
+					.catch(e => {
+						out.textContent = 'Network error: ' + e;
+						out.className = 'out err';
+					});
 			});
 
 			// Delete (email O username) + password

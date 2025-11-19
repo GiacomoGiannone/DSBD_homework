@@ -245,7 +245,26 @@ def http_login():
 	req.password = password
 	req.email = email
 	res = UserService().LoginUser(req, None)
-	return jsonify({"status": res.status, "message": res.message}), (200 if res.status == 200 else 401 if res.status == 401 else 400 if res.status == 400 else 500)
+	# If login ok, resolve canonical email for redirect to data_test
+	body = {"status": res.status, "message": res.message}
+	status_code = 200 if res.status == 200 else 401 if res.status == 401 else 400 if res.status == 400 else 500
+	if status_code == 200:
+		resolved_email = None
+		if email:
+			resolved_email = email
+		else:
+			try:
+				conn = get_connection(); cur = conn.cursor()
+				cur.execute("SELECT email FROM users WHERE username=%s", (username,))
+				row = cur.fetchone()
+				cur.close(); conn.close()
+				if row:
+					resolved_email = row[0]
+			except Exception:
+				resolved_email = None
+		if resolved_email:
+			body["email"] = resolved_email
+	return jsonify(body), status_code
 
 
 def serve_http():
@@ -260,6 +279,12 @@ def serve_test_page():
 	resp.headers['Pragma'] = 'no-cache'
 	resp.headers['Expires'] = '0'
 	return resp
+
+
+@app.get("/data_test")
+def serve_data_page():
+	# Page moved to DataCollector service; keep backwards compatibility by redirect hint
+	return jsonify({"moved": True, "location": "http://localhost:8082/data_test"}), 301
 
 
 if __name__ == "__main__":

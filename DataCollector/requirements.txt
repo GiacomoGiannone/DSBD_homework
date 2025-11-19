@@ -5,3 +5,4 @@ mysql-connector-python
 requests
 schedule
 python-dotenv
+flask-cors
