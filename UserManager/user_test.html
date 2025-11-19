@@ -41,28 +41,47 @@
 		function getVal(id) { return document.getElementById(id).value.trim(); }
 
 		function wire() {
-			// Add User
+			// Add User (email + username + password obbligatori)
 			const addBtn = document.getElementById('btn-add');
 			addBtn.addEventListener('click', () => {
 				const email = getVal('add-email');
 				const username = getVal('add-username');
 				const password = document.getElementById('add-password').value; // allow spaces
-				api('/add', { email, username, password }, document.getElementById('out-add'));
+				const out = document.getElementById('out-add');
+				if (!email || !username || !password) {
+					out.textContent = 'Compila email, username e password';
+					out.className = 'out warn';
+					return;
+				}
+				api('/add', { email, username, password }, out);
 			});
 
-			// Login
+			// Login (email O username) + password
 			const loginBtn = document.getElementById('btn-login');
 			loginBtn.addEventListener('click', () => {
-				const email = getVal('login-email');
+				const identity = getVal('login-identity');
 				const password = document.getElementById('login-password').value;
-				api('/login', { email, password }, document.getElementById('out-login'));
+				const out = document.getElementById('out-login');
+				if (!identity || !password) {
+					out.textContent = 'Inserisci email o username e la password';
+					out.className = 'out warn';
+					return;
+				}
+				api('/login', { identity, password }, out);
 			});
 
-			// Delete
+			// Delete (email O username) + password
 			const delBtn = document.getElementById('btn-del');
 			delBtn.addEventListener('click', () => {
-				const email = getVal('del-email');
-				api('/delete', { email }, document.getElementById('out-del'));
+				const identity = getVal('del-identity');
+				const password = document.getElementById('del-password').value;
+				const out = document.getElementById('out-del');
+				if (!identity || !password) {
+					out.textContent = 'Inserisci email o username e la password';
+					out.className = 'out warn';
+					return;
+				}
+				api('/delete', { identity, password }, out);
 			});
 		}
 
@@ -79,11 +98,11 @@
 		<h2>1) Create User</h2>
 		<div class="row">
 			<div>
-				<label for="add-email">Email (obbligatoria)</label>
+				<label for="add-email">Email</label>
 				<input id="add-email" type="email" placeholder="alice@example.com" />
 			</div>
 			<div>
-				<label for="add-username">Username (opzionale, default = email)</label>
+				<label for="add-username">Username</label>
 				<input id="add-username" type="text" placeholder="alice" />
 			</div>
 			<div>
@@ -101,8 +120,8 @@
 		<h2>2) Login</h2>
 		<div class="row">
 			<div>
-				<label for="login-email">Email</label>
-				<input id="login-email" type="email" placeholder="alice@example.com" />
+				<label for="login-identity">Email o Username</label>
+				<input id="login-identity" type="text" placeholder="alice@example.com oppure alice" />
 			</div>
 			<div>
 				<label for="login-password">Password</label>
@@ -119,8 +138,12 @@
 		<h2>3) Delete</h2>
 		<div class="row">
 			<div>
-				<label for="del-email">Email</label>
-				<input id="del-email" type="email" placeholder="alice@example.com" />
+				<label for="del-identity">Email o Username</label>
+				<input id="del-identity" type="text" placeholder="alice@example.com oppure alice" />
+			</div>
+			<div>
+				<label for="del-password">Password</label>
+				<input id="del-password" type="password" placeholder="••••••••" />
 			</div>
 			<div style="align-self: end">
 				<button id="btn-del">Delete User</button>

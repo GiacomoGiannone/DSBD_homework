@@ -99,30 +99,42 @@ class UserService(pb2_grpc.UserServiceServicer):
 	def DeleteUser(self, request, context):
 		username = (getattr(request, "username", "") or "").strip()
 		email = (getattr(request, "email", "") or "").strip()
-		if not email and not username:
-			return pb2.userResponse(status=400, message="email or username required")
+		password = getattr(request, "password", "") or ""
+		if (not email and not username) or not password:
+			return pb2.userResponse(status=400, message="email or username and password required")
 		try:
 			conn = get_connection()
 			cur = conn.cursor()
-			affected = 0
+			# First, resolve identity and fetch stored hash
+			row = None
+			resolved_email = None
 			if email:
-				cur.execute("DELETE FROM users WHERE email=%s", (email,))
-				affected = cur.rowcount
+				cur.execute("SELECT email, password FROM users WHERE email=%s", (email,))
+				row = cur.fetchone()
+				resolved_email = email if row else None
 			else:
-				# Resolve username -> email (ensure unambiguous)
-				cur.execute("SELECT email FROM users WHERE username=%s", (username,))
+				cur.execute("SELECT email, password FROM users WHERE username=%s", (username,))
 				rows = cur.fetchall()
 				if len(rows) == 0:
-					cur.close()
-					conn.close()
+					cur.close(); conn.close()
 					return pb2.userResponse(status=404, message="user not found")
 				if len(rows) > 1:
-					cur.close()
-					conn.close()
+					cur.close(); conn.close()
 					return pb2.userResponse(status=409, message="username not unique")
-				resolved_email = rows[0][0]
-				cur.execute("DELETE FROM users WHERE email=%s", (resolved_email,))
-				affected = cur.rowcount
+				resolved_email, stored_hash = rows[0][0], rows[0][1] if len(rows[0]) > 1 else None
+				row = (resolved_email, stored_hash)
+
+			if not row:
+				cur.close(); conn.close()
+				return pb2.userResponse(status=404, message="user not found")
+			stored_hash = row[1]
+			if not verify_password(password, stored_hash):
+				cur.close(); conn.close()
+				return pb2.userResponse(status=401, message="invalid credentials")
+
+			# Auth ok: perform delete by resolved email
+			cur.execute("DELETE FROM users WHERE email=%s", (resolved_email,))
+			affected = cur.rowcount
 			conn.commit()
 			cur.close()
 			conn.close()
@@ -176,6 +188,8 @@ def serve_grpc():
 
 
 app = Flask(__name__)
+# Disable static file caching for dev so updated HTML is always served
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 
 @app.post("/add")
@@ -197,23 +211,33 @@ def http_add():
 @app.post("/delete")
 def http_delete():
 	data = request.get_json(silent=True) or {}
-	username = (data.get("username") or "").strip()
-	email = (data.get("email") or "").strip()
+	identity = (data.get("identity") or "").strip()
+	password = data.get("password") or ""
+	username = ""
+	email = ""
+	if identity:
+		email = identity if "@" in identity else ""
+		username = identity if "@" not in identity else ""
 	class _Req:
 		pass
 	req = _Req()
 	req.username = username
 	req.email = email
+	req.password = password
 	res = UserService().DeleteUser(req, None)
-	return jsonify({"status": res.status, "message": res.message}), (200 if res.status == 200 else 404 if res.status == 404 else 400 if res.status == 400 else 500)
+	return jsonify({"status": res.status, "message": res.message}), (200 if res.status == 200 else 404 if res.status == 404 else 400 if res.status == 400 else 401 if res.status == 401 else 409 if res.status == 409 else 500)
 
 
 @app.post("/login") 
 def http_login():
 	data = request.get_json(silent=True) or {}
-	username = (data.get("username") or "").strip()
+	identity = (data.get("identity") or "").strip()
 	password = data.get("password") or ""
-	email = (data.get("email") or "").strip()
+	username = ""
+	email = ""
+	if identity:
+		email = identity if "@" in identity else ""
+		username = identity if "@" not in identity else ""
 	class _Req:
 		pass
 	req = _Req()
@@ -231,7 +255,11 @@ def serve_http():
 # Serve the local HTML tester to avoid CORS issues
 @app.get("/")
 def serve_test_page():
-	return send_from_directory(os.path.dirname(__file__), "user_test.html")
+	resp = send_from_directory(os.path.dirname(__file__), "user_test.html")
+	resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+	resp.headers['Pragma'] = 'no-cache'
+	resp.headers['Expires'] = '0'
+	return resp
 
 
 if __name__ == "__main__":

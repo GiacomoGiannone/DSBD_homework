@@ -2,6 +2,9 @@
     --users (email PK, username, iban, codice fiscale)
     --interests (email FK, airport code)*/
 
+CREATE DATABASE IF NOT EXISTS userdb;
+USE userdb;
+
 CREATE TABLE IF NOT EXISTS users
 (
     email VARCHAR(255) PRIMARY KEY,

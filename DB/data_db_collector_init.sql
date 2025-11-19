@@ -4,6 +4,9 @@
     --flight_number;
     --departure_arrival_date;*/
 
+CREATE DATABASE IF NOT EXISTS datadb;
+USE datadb;
+
 CREATE TABLE IF NOT EXISTS flights
 (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
