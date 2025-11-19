@@ -8,6 +8,9 @@ import mysql.connector
 import grpc
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+import re
+import csv
+from io import StringIO
 
 import DataCollector_pb2 as pb2
 import DataCollector_pb2_grpc as pb2_grpc
@@ -30,6 +33,7 @@ DATA_DB = {
 
 OPEN_SKY_USER = os.getenv("OPENSKY_USER", "")
 OPEN_SKY_PASS = os.getenv("OPENSKY_PASS", "")
+AIRPORTS_SOURCE_URL = os.getenv("AIRPORTS_SOURCE_URL", "https://raw.githubusercontent.com/davidmegginson/ourairports-data/master/airports.csv")
 
 REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", str(12*3600)))
 GRPC_PORT = int(os.getenv("DATACOLLECTOR_GRPC_PORT", "50052"))
@@ -119,6 +123,9 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		code = (request.code or '').strip().upper()
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
+		# Basic validation: 3-10 alphanumerics (ICAO/IATA simplified)
+		if not re.fullmatch(r'[A-Z0-9]{3,10}', code):
+			return pb2.GenericResponse(status=400, message='invalid airport code (expected 3-10 A-Z/0-9)')
 		try:
 			conn = get_user_conn(); cur = conn.cursor()
 			cur.execute("SELECT 1 FROM interests WHERE email=%s AND airport_code=%s", (email, code))
@@ -283,6 +290,70 @@ if __name__ == '__main__':
 			} for f in res.flights
 		]
 		return jsonify({'flights': flights})
+
+	# --- Airport suggestions cache & API ---
+	_airports_cache = { 'loaded': False, 'rows': [], 'ts': 0 }
+	_cache_lock = threading.Lock()
+
+	def _load_airports_if_needed(force: bool = False):
+		with _cache_lock:
+			if _airports_cache['loaded'] and not force:
+				return
+			try:
+				logging.info("Loading airports dataset from %s", AIRPORTS_SOURCE_URL)
+				r = requests.get(AIRPORTS_SOURCE_URL, timeout=30)
+				r.raise_for_status()
+				text = r.text
+				rows = []
+				reader = csv.DictReader(StringIO(text))
+				for row in reader:
+					ident = (row.get('ident') or '').strip().upper()
+					iata = (row.get('iata_code') or '').strip().upper()
+					name = (row.get('name') or '').strip()
+					city = (row.get('municipality') or '').strip()
+					country = (row.get('iso_country') or '').strip()
+					atype = (row.get('type') or '').strip()
+					# filter reasonable airports and ident format (3-10 alnum)
+					if atype not in ('large_airport', 'medium_airport', 'small_airport'):
+						continue
+					if not ident or not re.fullmatch(r'[A-Z0-9]{3,10}', ident):
+						continue
+					rows.append({ 'ident': ident, 'iata': iata, 'name': name, 'city': city, 'country': country })
+				_airports_cache['rows'] = rows
+				_airports_cache['loaded'] = True
+				_airports_cache['ts'] = time.time()
+				logging.info("Loaded %d airports for suggestions", len(rows))
+			except Exception as e:
+				logging.warning("Failed loading airports dataset: %s", e)
+				# provide minimal fallback
+				_airports_cache['rows'] = [
+					{ 'ident': 'LIMC', 'iata': 'MXP', 'name': 'Milano Malpensa', 'city': 'Milan', 'country': 'IT' },
+					{ 'ident': 'LIRF', 'iata': 'FCO', 'name': 'Roma Fiumicino', 'city': 'Rome', 'country': 'IT' },
+					{ 'ident': 'EGLL', 'iata': 'LHR', 'name': 'London Heathrow', 'city': 'London', 'country': 'GB' },
+				]
+				_airports_cache['loaded'] = True
+				_airports_cache['ts'] = time.time()
+
+	@app.get('/api/airport_suggest')
+	def api_airport_suggest():
+		q = (request.args.get('q') or '').strip()
+		if not _airports_cache['loaded']:
+			_load_airports_if_needed()
+		if not q:
+			return jsonify({ 'items': [] })
+		q_up = q.upper()
+		items = []
+		for row in _airports_cache['rows']:
+			ident = row['ident']
+			iata = row['iata']
+			name = row['name']
+			city = row['city']
+			country = row['country']
+			if ident.startswith(q_up) or (iata and iata.startswith(q_up)) or (q.lower() in name.lower()):
+				items.append({ 'ident': ident, 'iata': iata, 'name': name, 'city': city, 'country': country })
+				if len(items) >= 10:
+					break
+		return jsonify({ 'items': items })
 
 	@app.get('/data_test')
 	def data_test_page():

@@ -34,6 +34,33 @@
 
     function wire() {
       document.getElementById('who').textContent = email || '(email non presente)';
+      // Suggestions for airports (autocomplete)
+      let debounce = null;
+      const listEl = document.getElementById('airports-list');
+      const addInput = document.getElementById('add-code');
+      if (addInput) {
+        addInput.addEventListener('input', () => {
+          const q = addInput.value.trim();
+          if (debounce) clearTimeout(debounce);
+          if (q.length < 2) { if (listEl) listEl.innerHTML = ''; return; }
+          debounce = setTimeout(async () => {
+            try {
+              const res = await fetch(`http://localhost:8082/api/airport_suggest?q=${encodeURIComponent(q)}`);
+              const body = await res.json();
+              if (listEl) {
+                listEl.innerHTML = '';
+                (body.items || []).forEach(it => {
+                  const opt = document.createElement('option');
+                  opt.value = it.ident;
+                  const label = [it.name, it.iata ? `(${it.iata})` : '', it.city, it.country].filter(Boolean).join(' ');
+                  opt.textContent = label;
+                  listEl.appendChild(opt);
+                });
+              }
+            } catch (e) { /* ignore network errors */ }
+          }, 250);
+        });
+      }
       // Add airport
       document.getElementById('btn-add-airport').addEventListener('click', () => {
         const code = document.getElementById('add-code').value.trim().toUpperCase();
@@ -68,7 +95,8 @@
   <div class="card">
     <h2>Aggiungi aeroporto</h2>
     <div class="row">
-      <input id="add-code" placeholder="ICAO (es. LIMC)" />
+      <input id="add-code" placeholder="ICAO (es. LIMC)" list="airports-list" autocomplete="off" />
+      <datalist id="airports-list"></datalist>
       <button id="btn-add-airport">Add Airport</button>
     </div>
     <div id="out-add-airport" class="out"></div>

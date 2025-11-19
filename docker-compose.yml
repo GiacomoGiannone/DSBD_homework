@@ -73,7 +73,7 @@ services:
 
       # openSky credentials (opzionali)
       OPENSKY_USER: "filippograsso22-api-client"
-      OPENSKY_PASS: "sH5kDZs2RQpX0KqvYtvFlwU0lieZphJP"
+      OPENSKY_PASS: "Ak6mxZPUFybXhllMLRvRRhruF74BFoOF"
     ports:
       - "8082:8082"     # REST test (Postman)
     depends_on:
