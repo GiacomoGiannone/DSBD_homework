@@ -1,6 +1,6 @@
---Inizializza il database con due tabelle:
+/*--Inizializza il database con due tabelle:
     --users (email PK, username, iban, codice fiscale)
-    --interests (email FK, airport code)
+    --interests (email FK, airport code)*/
 
 CREATE TABLE IF NOT EXISTS users
 (
