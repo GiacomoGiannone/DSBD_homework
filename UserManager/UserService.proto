@@ -5,6 +5,7 @@ message userRequest
     string email = 1;
     string username = 2;
     string password = 3;
+    string request_id = 4;
 }
 
 message userResponse 

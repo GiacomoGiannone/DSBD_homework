@@ -22,3 +22,11 @@ CREATE TABLE IF NOT EXISTS interests
     PRIMARY KEY (email, airport_code),
     FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE
 );
+
+/* At-most-once request log: stores processed request IDs per operation */
+CREATE TABLE IF NOT EXISTS request_log
+(
+    request_id VARCHAR(255) PRIMARY KEY,
+    operation VARCHAR(32) NOT NULL,
+    ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

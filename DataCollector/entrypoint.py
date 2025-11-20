@@ -11,7 +11,6 @@ import sys
 import subprocess
 import shlex
 import logging
-import json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 

@@ -2,7 +2,6 @@ import os
 import time
 import logging
 import threading
-import json
 from concurrent import futures
 import requests
 import mysql.connector
@@ -44,33 +43,6 @@ GRPC_PORT = int(os.getenv("DATACOLLECTOR_GRPC_PORT", "50052"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-
-def get_opensky_oauth_token(client_id: str, client_secret: str):
-	"""Generate OpenSky OAuth token from client credentials."""
-	if not client_id or not client_secret:
-		return None
-	try:
-		url = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
-		headers = {"Content-Type": "application/x-www-form-urlencoded"}
-		data = {
-			"grant_type": "client_credentials",
-			"client_id": client_id,
-			"client_secret": client_secret
-		}
-		response = requests.post(url, headers=headers, data=data, timeout=10)
-		if response.status_code == 200:
-			token_data = response.json()
-			access_token = token_data.get("access_token")
-			expires_in = token_data.get("expires_in")
-			if access_token:
-				logging.info(f"OpenSky OAuth token generated (expires in {expires_in}s)")
-				return access_token
-		else:
-			logging.warning(f"OpenSky OAuth response failed: {response.status_code}")
-		return None
-	except Exception as e:
-		logging.warning(f"Failed to fetch OpenSky OAuth token: {e}")
-		return None
 
 
 def get_user_conn():

@@ -57,28 +57,38 @@ def verify_password(plain: str, stored_hash: str) -> bool:
 
 class UserService(pb2_grpc.UserServiceServicer):
 	def AddUser(self, request, context):
+		request_id = (getattr(request, "request_id", "") or "").strip()
 		username = (getattr(request, "username", "") or "").strip()
 		password = getattr(request, "password", "") or ""
 		email = (getattr(request, "email", "") or "").strip()
 
-		# Require all three: email, username, password
-		if not email or not username or not password:
-			return pb2.userResponse(status=400, message="email, username and password are required")
+		# Require all fields including request_id for at-most-once semantics
+		if not request_id or not email or not username or not password:
+			return pb2.userResponse(status=400, message="request_id, email, username and password are required")
 		pwd_hash = hash_password(password)
 
 		try:
-			conn = get_connection()
-			cur = conn.cursor()
-			# Check email uniqueness (enforced by PK) and also check username to avoid ambiguous logins
+			conn = get_connection(); cur = conn.cursor()
+			# Attempt to insert request_id first (transaction). If duplicate, treat as already processed.
+			try:
+				cur.execute("INSERT INTO request_log (request_id, operation) VALUES (%s,%s)", (request_id, 'AddUser'))
+			except Exception as e:
+				# Duplicate PK or other error -> if duplicate assume already processed
+				if getattr(e, 'errno', None) in (1062,):  # MySQL duplicate key
+					cur.close(); conn.close()
+					return pb2.userResponse(status=200, message="already processed")
+				logging.exception("request_log insert failed")
+				cur.close(); conn.close()
+				return pb2.userResponse(status=500, message="request_log error")
+
+			# Email uniqueness
 			cur.execute("SELECT 1 FROM users WHERE email=%s", (email,))
 			if cur.fetchone() is not None:
-				cur.close()
-				conn.close()
+				conn.rollback(); cur.close(); conn.close()
 				return pb2.userResponse(status=409, message="user already exists")
 			cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
 			if cur.fetchone() is not None:
-				cur.close()
-				conn.close()
+				conn.rollback(); cur.close(); conn.close()
 				return pb2.userResponse(status=409, message="username already exists")
 
 			cur.execute(
@@ -88,60 +98,68 @@ class UserService(pb2_grpc.UserServiceServicer):
 				""",
 				(email, username, pwd_hash, None, None),
 			)
-			conn.commit()
-			cur.close()
-			conn.close()
+			conn.commit(); cur.close(); conn.close()
 			return pb2.userResponse(status=201, message="user created")
 		except Exception as e:
+			try:
+				conn.rollback()
+			except Exception:
+				pass
 			logging.exception("AddUser failed")
 			return pb2.userResponse(status=500, message=str(e))
 
 	def DeleteUser(self, request, context):
+		request_id = (getattr(request, "request_id", "") or "").strip()
 		username = (getattr(request, "username", "") or "").strip()
 		email = (getattr(request, "email", "") or "").strip()
 		password = getattr(request, "password", "") or ""
-		if (not email and not username) or not password:
-			return pb2.userResponse(status=400, message="email or username and password required")
+		if not request_id or ((not email and not username) or not password):
+			return pb2.userResponse(status=400, message="request_id and (email or username) and password required")
 		try:
-			conn = get_connection()
-			cur = conn.cursor()
-			# First, resolve identity and fetch stored hash
-			row = None
-			resolved_email = None
+			conn = get_connection(); cur = conn.cursor()
+			# Insert request_id first; if duplicate we skip all
+			try:
+				cur.execute("INSERT INTO request_log (request_id, operation) VALUES (%s,%s)", (request_id, 'DeleteUser'))
+			except Exception as e:
+				if getattr(e, 'errno', None) in (1062,):
+					cur.close(); conn.close()
+					return pb2.userResponse(status=200, message="already processed")
+				logging.exception("request_log insert failed")
+				cur.close(); conn.close()
+				return pb2.userResponse(status=500, message="request_log error")
+
+			# Resolve identity
+			row = None; resolved_email = None
 			if email:
 				cur.execute("SELECT email, password FROM users WHERE email=%s", (email,))
-				row = cur.fetchone()
-				resolved_email = email if row else None
+				row = cur.fetchone(); resolved_email = email if row else None
 			else:
 				cur.execute("SELECT email, password FROM users WHERE username=%s", (username,))
 				rows = cur.fetchall()
 				if len(rows) == 0:
-					cur.close(); conn.close()
-					return pb2.userResponse(status=404, message="user not found")
+					conn.rollback(); cur.close(); conn.close(); return pb2.userResponse(status=404, message="user not found")
 				if len(rows) > 1:
-					cur.close(); conn.close()
-					return pb2.userResponse(status=409, message="username not unique")
+					conn.rollback(); cur.close(); conn.close(); return pb2.userResponse(status=409, message="username not unique")
 				resolved_email, stored_hash = rows[0][0], rows[0][1] if len(rows[0]) > 1 else None
 				row = (resolved_email, stored_hash)
 
 			if not row:
-				cur.close(); conn.close()
-				return pb2.userResponse(status=404, message="user not found")
+				conn.rollback(); cur.close(); conn.close(); return pb2.userResponse(status=404, message="user not found")
 			stored_hash = row[1]
 			if not verify_password(password, stored_hash):
-				cur.close(); conn.close()
-				return pb2.userResponse(status=401, message="invalid credentials")
+				conn.rollback(); cur.close(); conn.close(); return pb2.userResponse(status=401, message="invalid credentials")
 
-			# Auth ok: perform delete by resolved email
 			cur.execute("DELETE FROM users WHERE email=%s", (resolved_email,))
 			affected = cur.rowcount
-			conn.commit()
-			cur.close()
-			conn.close()
+			conn.commit(); cur.close(); conn.close()
 			if affected == 0:
 				return pb2.userResponse(status=404, message="user not found")
 			return pb2.userResponse(status=200, message="user deleted")
 		except Exception as e:
+			try:
+				conn.rollback()
+			except Exception:
+				pass
 			logging.exception("DeleteUser failed")
 			return pb2.userResponse(status=500, message=str(e))
 
@@ -195,12 +213,14 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 @app.post("/add")
 def http_add():
 	data = request.get_json(silent=True) or {}
+	request_id = (data.get("request_id") or "").strip()
 	username = (data.get("username") or "").strip()
 	password = data.get("password") or ""
 	email = (data.get("email") or "").strip()
 	class _Req:
 		pass
 	req = _Req()
+	req.request_id = request_id
 	req.username = username
 	req.password = password
 	req.email = email
@@ -211,6 +231,7 @@ def http_add():
 @app.post("/delete")
 def http_delete():
 	data = request.get_json(silent=True) or {}
+	request_id = (data.get("request_id") or "").strip()
 	identity = (data.get("identity") or "").strip()
 	password = data.get("password") or ""
 	username = ""
@@ -221,6 +242,7 @@ def http_delete():
 	class _Req:
 		pass
 	req = _Req()
+	req.request_id = request_id
 	req.username = username
 	req.email = email
 	req.password = password
