@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import threading
+import json
 from concurrent import futures
 import requests
 import mysql.connector
@@ -33,12 +34,43 @@ DATA_DB = {
 
 OPEN_SKY_USER = os.getenv("OPENSKY_USER", "")
 OPEN_SKY_PASS = os.getenv("OPENSKY_PASS", "")
+OPEN_SKY_CLIENT_ID = os.getenv("OPEN_SKY_CLIENT_ID", "")
+OPEN_SKY_CLIENT_SECRET = os.getenv("OPEN_SKY_CLIENT_SECRET", "")
+OPEN_SKY_TOKEN = os.getenv("OPEN_SKY_TOKEN", "")
 AIRPORTS_SOURCE_URL = os.getenv("AIRPORTS_SOURCE_URL", "https://raw.githubusercontent.com/davidmegginson/ourairports-data/master/airports.csv")
 
 REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", str(12*3600)))
 GRPC_PORT = int(os.getenv("DATACOLLECTOR_GRPC_PORT", "50052"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+
+def get_opensky_oauth_token(client_id: str, client_secret: str):
+	"""Generate OpenSky OAuth token from client credentials."""
+	if not client_id or not client_secret:
+		return None
+	try:
+		url = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token"
+		headers = {"Content-Type": "application/x-www-form-urlencoded"}
+		data = {
+			"grant_type": "client_credentials",
+			"client_id": client_id,
+			"client_secret": client_secret
+		}
+		response = requests.post(url, headers=headers, data=data, timeout=10)
+		if response.status_code == 200:
+			token_data = response.json()
+			access_token = token_data.get("access_token")
+			expires_in = token_data.get("expires_in")
+			if access_token:
+				logging.info(f"OpenSky OAuth token generated (expires in {expires_in}s)")
+				return access_token
+		else:
+			logging.warning(f"OpenSky OAuth response failed: {response.status_code}")
+		return None
+	except Exception as e:
+		logging.warning(f"Failed to fetch OpenSky OAuth token: {e}")
+		return None
 
 
 def get_user_conn():
@@ -68,11 +100,23 @@ def fetch_all_airports():
 
 
 def opensky_get(url, params):
-	auth = (OPEN_SKY_USER, OPEN_SKY_PASS) if OPEN_SKY_USER and OPEN_SKY_PASS else None
-	r = requests.get(url, params=params, auth=auth, timeout=30)
-	if r.status_code == 200:
-		return r.json()
-	logging.warning("OpenSky %s %s -> %s", url, params, r.status_code)
+	"""Make authenticated request to OpenSky API using OAuth token or basic auth."""
+	headers = {}
+	auth = None
+	
+	# Priority: OAuth token (if available) > Basic auth (user/pass) > No auth
+	if OPEN_SKY_TOKEN:
+		headers["Authorization"] = f"Bearer {OPEN_SKY_TOKEN}"
+	elif OPEN_SKY_USER and OPEN_SKY_PASS:
+		auth = (OPEN_SKY_USER, OPEN_SKY_PASS)
+	
+	try:
+		r = requests.get(url, params=params, headers=headers, auth=auth, timeout=30)
+		if r.status_code == 200:
+			return r.json()
+		logging.warning("OpenSky %s %s -> %s", url, params, r.status_code)
+	except Exception as e:
+		logging.warning("OpenSky request failed: %s", e)
 	return []
 
 

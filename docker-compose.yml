@@ -71,9 +71,13 @@ services:
       DB_USER: root
       DB_PASSWORD: root
 
-      # openSky credentials (opzionali)
-      OPENSKY_USER: "filippograsso22"
-      OPENSKY_PASS: "Caracalla10"
+      # OpenSky OAuth credentials (read from DataCollector/credentials.json)
+      # If you have OAuth credentials (preferred), set them in credentials.json
+      # Otherwise, uncomment below for basic auth (not recommended)
+      # OPENSKY_USER: "your_username"
+      # OPENSKY_PASS: "your_password"
+    volumes:
+      - ./DataCollector/credentials.json:/credentials/credentials.json:ro
     ports:
       - "8082:8082"     # REST test (Postman)
     depends_on:

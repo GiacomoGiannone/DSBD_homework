@@ -19,5 +19,8 @@ RUN python -m grpc_tools.protoc -I. \
 # Esponi la porta REST
 EXPOSE 8082
 
-# Comando per partire con il server
+# Entrypoint: run Python uploader if credentials.json provided, then start service
+ENTRYPOINT ["python", "/app/entrypoint.py"]
+
+# Fallback command (kept for clarity)
 CMD ["python", "data_collector.py"]
