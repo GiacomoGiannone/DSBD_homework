@@ -244,6 +244,79 @@ if __name__ == '__main__':
 	app = Flask(__name__)
 	CORS(app)  # allow calls from user-manager (8081)
 
+	# -------------------------------
+	# Airport suggestions (autocomplete)
+	# -------------------------------
+	_AIRPORT_CACHE = {"ts": 0, "items": []}
+
+	def _load_airports_index(force=False):
+		now = time.time()
+		if not force and _AIRPORT_CACHE["items"] and (now - _AIRPORT_CACHE["ts"]) < REFRESH_INTERVAL_SECONDS:
+			return _AIRPORT_CACHE["items"]
+		try:
+			r = requests.get(AIRPORTS_SOURCE_URL, timeout=30)
+			r.raise_for_status()
+			text = r.text
+			reader = csv.DictReader(StringIO(text))
+			items = []
+			for row in reader:
+				name = (row.get('name') or '').strip()
+				iata = (row.get('iata_code') or '').strip().upper()
+				icao = (row.get('gps_code') or row.get('ident') or '').strip().upper()
+				city = (row.get('municipality') or '').strip()
+				country = (row.get('iso_country') or '').strip()
+				if not (iata or icao):
+					continue
+				# Prefer ICAO as ident for our UI
+				ident = icao or iata
+				items.append({
+					'ident': ident,
+					'name': name,
+					'iata': iata,
+					'icao': icao,
+					'city': city,
+					'country': country,
+				})
+			# De-duplicate by ident keeping first occurrence
+			seen = set()
+			dedup = []
+			for it in items:
+				k = it['ident']
+				if k in seen:
+					continue
+				seen.add(k)
+				dedup.append(it)
+			_AIRPORT_CACHE["items"] = dedup
+			_AIRPORT_CACHE["ts"] = now
+			return dedup
+		except Exception as e:
+			logging.warning("Failed to load airports index: %s", e)
+			return _AIRPORT_CACHE["items"] or []
+
+	def _suggest_airports(q: str, limit: int = 10):
+		q = (q or '').strip().upper()
+		if len(q) < 2:
+			return []
+		items = _load_airports_index()
+		res = []
+		for it in items:
+			# Only ICAO prefix OR Name prefix matches (no substring matches)
+			icao = (it.get('icao') or '').upper()
+			name = (it.get('name') or '').upper()
+			code_hits = icao.startswith(q)
+			name_hit = name.startswith(q)
+			if code_hits or name_hit:
+				res.append(it)
+				if len(res) >= limit:
+					break
+		return res
+
+	@app.get('/api/airport_suggest')
+	def api_airport_suggest():
+		q = request.args.get('q', '').strip()
+		items = _suggest_airports(q, limit=15)
+		return jsonify({'items': items})
+
 	@app.post('/api/add_airport')
 	def api_add_airport():
 		data = request.get_json(silent=True) or {}
