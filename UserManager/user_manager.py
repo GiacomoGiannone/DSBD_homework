@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import types
 from concurrent import futures
 
 import grpc
@@ -27,6 +28,22 @@ HTTP_PORT = int(os.getenv("HTTP_PORT", "8081"))
 def get_connection():
 	return mysql.connector.connect(**DB_CONFIG)
 
+def close_connection(conn, cur):
+	try:
+		cur.close()
+	except Exception as e:
+		logging.warning("Failed to close cursor: %s", e)
+	try:
+		conn.close()
+	except Exception as e:
+		logging.warning("Failed to close connection: %s", e)
+
+def close_connection_with_rollback(conn, cur):
+	try:
+		conn.rollback()
+	except Exception as e:
+		logging.warning("Failed to rollback connection: %s", e)
+	close_connection(conn, cur)
 
 def wait_for_db(max_wait_seconds: int = 5):
 	deadline = time.time() + max_wait_seconds
@@ -41,64 +58,68 @@ def wait_for_db(max_wait_seconds: int = 5):
 			time.sleep(1)
 	raise RuntimeError(f"DB not ready after {max_wait_seconds}s: {last_err}")
 
-
 def hash_password(plain: str) -> str:
 	salt = bcrypt.gensalt(rounds=12)
 	hashed = bcrypt.hashpw(plain.encode("utf-8"), salt)
 	return hashed.decode("utf-8")
-
 
 def verify_password(plain: str, stored_hash: str) -> bool:
 	try:
 		return bcrypt.checkpw(plain.encode("utf-8"), stored_hash.encode("utf-8"))
 	except Exception:
 		return False
-
-
-class UserService(pb2_grpc.UserServiceServicer):
-	def AddUser(self, request, context):
+	
+def get_request_attributes(request):
 		request_id = (getattr(request, "request_id", "") or "").strip()
 		username = (getattr(request, "username", "") or "").strip()
 		password = getattr(request, "password", "") or ""
 		email = (getattr(request, "email", "") or "").strip()
+		return request_id, username, password, email
 
+class UserService(pb2_grpc.UserServiceServicer):
+	def AddUser(self, request, context):
+		request_id, username, password, email = get_request_attributes(request)
 		# Require all fields including request_id for at-most-once semantics
 		if not request_id or not email or not username or not password:
 			return pb2.userResponse(status=400, message="request_id, email, username and password are required")
 		pwd_hash = hash_password(password)
 
 		try:
-			conn = get_connection(); cur = conn.cursor()
+			conn = get_connection() 
+			cur = conn.cursor()
 			# Attempt to insert request_id first (transaction). If duplicate, treat as already processed.
 			try:
 				cur.execute("INSERT INTO request_log (request_id, operation) VALUES (%s,%s)", (request_id, 'AddUser'))
 			except Exception as e:
 				# Duplicate PK or other error -> if duplicate assume already processed
-				if getattr(e, 'errno', None) in (1062,):  # MySQL duplicate key
-					cur.close(); conn.close()
-					return pb2.userResponse(status=200, message="already processed")
+				error_no = getattr(e, 'errno', None)
+				logging.error(f"request_log insert error - errno={error_no}, type={type(e).__name__}, msg={str(e)}")
+				if error_no in (1062,):  # MySQL duplicate key
+					close_connection(conn, cur)
+					return pb2.userResponse(status=401, message="Request ID already processed")
 				logging.exception("request_log insert failed")
-				cur.close(); conn.close()
-				return pb2.userResponse(status=500, message="request_log error")
+				close_connection(conn, cur)
+				return pb2.userResponse(status=500, message=f"request_log error: {str(e)}")
 
 			# Email uniqueness
 			cur.execute("SELECT 1 FROM users WHERE email=%s", (email,))
 			if cur.fetchone() is not None:
-				conn.rollback(); cur.close(); conn.close()
+				close_connection_with_rollback(conn, cur)
 				return pb2.userResponse(status=409, message="user already exists")
 			cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
 			if cur.fetchone() is not None:
-				conn.rollback(); cur.close(); conn.close()
+				close_connection_with_rollback(conn, cur)
 				return pb2.userResponse(status=409, message="username already exists")
 
 			cur.execute(
 				"""
-				INSERT INTO users (email, username, password, iban, codice_fiscale)
-				VALUES (%s, %s, %s, %s, %s)
+				INSERT INTO users (email, username, password)
+				VALUES (%s, %s, %s)
 				""",
-				(email, username, pwd_hash, None, None),
+				(email, username, pwd_hash),
 			)
-			conn.commit(); cur.close(); conn.close()
+			conn.commit() 
+			close_connection(conn, cur)
 			return pb2.userResponse(status=201, message="user created")
 		except Exception as e:
 			try:
@@ -109,49 +130,54 @@ class UserService(pb2_grpc.UserServiceServicer):
 			return pb2.userResponse(status=500, message=str(e))
 
 	def DeleteUser(self, request, context):
-		request_id = (getattr(request, "request_id", "") or "").strip()
-		username = (getattr(request, "username", "") or "").strip()
-		email = (getattr(request, "email", "") or "").strip()
-		password = getattr(request, "password", "") or ""
+		request_id, username, password, email = get_request_attributes(request)
 		if not request_id or ((not email and not username) or not password):
 			return pb2.userResponse(status=400, message="request_id and (email or username) and password required")
 		try:
-			conn = get_connection(); cur = conn.cursor()
+			conn = get_connection() 
+			cur = conn.cursor()
 			# Insert request_id first; if duplicate we skip all
 			try:
 				cur.execute("INSERT INTO request_log (request_id, operation) VALUES (%s,%s)", (request_id, 'DeleteUser'))
 			except Exception as e:
 				if getattr(e, 'errno', None) in (1062,):
-					cur.close(); conn.close()
+					close_connection(conn, cur)
 					return pb2.userResponse(status=200, message="already processed")
 				logging.exception("request_log insert failed")
-				cur.close(); conn.close()
+				close_connection(conn, cur)
 				return pb2.userResponse(status=500, message="request_log error")
 
 			# Resolve identity
-			row = None; resolved_email = None
+			row = None 
+			resolved_email = None
 			if email:
 				cur.execute("SELECT email, password FROM users WHERE email=%s", (email,))
-				row = cur.fetchone(); resolved_email = email if row else None
+				row = cur.fetchone() 
+				resolved_email = email if row else None
 			else:
 				cur.execute("SELECT email, password FROM users WHERE username=%s", (username,))
 				rows = cur.fetchall()
 				if len(rows) == 0:
-					conn.rollback(); cur.close(); conn.close(); return pb2.userResponse(status=404, message="user not found")
+					close_connection_with_rollback(conn, cur)
+					return pb2.userResponse(status=404, message="user not found")
 				if len(rows) > 1:
-					conn.rollback(); cur.close(); conn.close(); return pb2.userResponse(status=409, message="username not unique")
+					close_connection_with_rollback(conn, cur)
+					return pb2.userResponse(status=409, message="username not unique")
 				resolved_email, stored_hash = rows[0][0], rows[0][1] if len(rows[0]) > 1 else None
 				row = (resolved_email, stored_hash)
 
 			if not row:
-				conn.rollback(); cur.close(); conn.close(); return pb2.userResponse(status=404, message="user not found")
+				close_connection_with_rollback(conn, cur)
+				return pb2.userResponse(status=404, message="user not found")
 			stored_hash = row[1]
 			if not verify_password(password, stored_hash):
-				conn.rollback(); cur.close(); conn.close(); return pb2.userResponse(status=401, message="invalid credentials")
+				close_connection_with_rollback(conn, cur)
+				return pb2.userResponse(status=401, message="invalid credentials")
 
 			cur.execute("DELETE FROM users WHERE email=%s", (resolved_email,))
 			affected = cur.rowcount
-			conn.commit(); cur.close(); conn.close()
+			conn.commit()
+			close_connection(conn, cur)
 			if affected == 0:
 				return pb2.userResponse(status=404, message="user not found")
 			return pb2.userResponse(status=200, message="user deleted")
@@ -164,9 +190,7 @@ class UserService(pb2_grpc.UserServiceServicer):
 			return pb2.userResponse(status=500, message=str(e))
 
 	def LoginUser(self, request, context):
-		username = (getattr(request, "username", "") or "").strip()
-		password = getattr(request, "password", "") or ""
-		email = (getattr(request, "email", "") or "").strip()
+		_, username, password, email = get_request_attributes(request)
 		if (not email and not username) or not password:
 			return pb2.userResponse(status=400, message="email or username and password required")
 		try:
@@ -180,12 +204,10 @@ class UserService(pb2_grpc.UserServiceServicer):
 				cur.execute("SELECT password FROM users WHERE username=%s", (username,))
 				rows = cur.fetchall()
 				if len(rows) > 1:
-					cur.close()
-					conn.close()
+					close_connection(conn, cur)
 					return pb2.userResponse(status=409, message="username not unique")
 				row = rows[0] if rows else None
-			cur.close()
-			conn.close()
+			close_connection(conn, cur)
 			if not row:
 				return pb2.userResponse(status=401, message="invalid credentials")
 			stored_hash = row[0]
@@ -210,83 +232,72 @@ app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 
+def _get_request_data():
+	"""Extract and sanitize JSON request data."""
+	return request.get_json(silent=True) or {}
+
+
 @app.post("/add")
 def http_add():
-	data = request.get_json(silent=True) or {}
-	request_id = (data.get("request_id") or "").strip()
-	username = (data.get("username") or "").strip()
-	password = data.get("password") or ""
-	email = (data.get("email") or "").strip()
-	class _Req:
-		pass
-	req = _Req()
-	req.request_id = request_id
-	req.username = username
-	req.password = password
-	req.email = email
+	data = _get_request_data()
+	req = types.SimpleNamespace(
+		request_id=(data.get("request_id") or "").strip(),
+		username=(data.get("username") or "").strip(),
+		password=data.get("password") or "",
+		email=(data.get("email") or "").strip()
+	)
 	res = UserService().AddUser(req, None)
-	return jsonify({"status": res.status, "message": res.message}), (res.status if res.status not in (201,) else 201)
+	http_status = 201 if res.status == 201 else res.status
+	return jsonify({"status": res.status, "message": res.message}), http_status
 
 
 @app.post("/delete")
 def http_delete():
-	data = request.get_json(silent=True) or {}
-	request_id = (data.get("request_id") or "").strip()
+	data = _get_request_data()
 	identity = (data.get("identity") or "").strip()
-	password = data.get("password") or ""
-	username = ""
-	email = ""
-	if identity:
-		email = identity if "@" in identity else ""
-		username = identity if "@" not in identity else ""
-	class _Req:
-		pass
-	req = _Req()
-	req.request_id = request_id
-	req.username = username
-	req.email = email
-	req.password = password
+	email = identity if "@" in identity else ""
+	username = identity if "@" not in identity else ""
+	req = types.SimpleNamespace(
+		request_id=(data.get("request_id") or "").strip(),
+		username=username,
+		email=email,
+		password=data.get("password") or ""
+	)
 	res = UserService().DeleteUser(req, None)
-	return jsonify({"status": res.status, "message": res.message}), (200 if res.status == 200 else 404 if res.status == 404 else 400 if res.status == 400 else 401 if res.status == 401 else 409 if res.status == 409 else 500)
+	http_status = res.status if res.status in (200, 400, 401, 404, 409) else 500
+	return jsonify({"status": res.status, "message": res.message}), http_status
 
 
 @app.post("/login") 
 def http_login():
-	data = request.get_json(silent=True) or {}
+	data = _get_request_data()
 	identity = (data.get("identity") or "").strip()
-	password = data.get("password") or ""
-	username = ""
-	email = ""
-	if identity:
-		email = identity if "@" in identity else ""
-		username = identity if "@" not in identity else ""
-	class _Req:
-		pass
-	req = _Req()
-	req.username = username
-	req.password = password
-	req.email = email
+	email = identity if "@" in identity else ""
+	username = identity if "@" not in identity else ""
+	req = types.SimpleNamespace(
+		username=username,
+		password=data.get("password") or "",
+		email=email
+	)
 	res = UserService().LoginUser(req, None)
-	# If login ok, resolve canonical email for redirect to data_test
 	body = {"status": res.status, "message": res.message}
-	status_code = 200 if res.status == 200 else 401 if res.status == 401 else 400 if res.status == 400 else 500
-	if status_code == 200:
-		resolved_email = None
-		if email:
-			resolved_email = email
-		else:
-			try:
-				conn = get_connection(); cur = conn.cursor()
-				cur.execute("SELECT email FROM users WHERE username=%s", (username,))
-				row = cur.fetchone()
-				cur.close(); conn.close()
-				if row:
-					resolved_email = row[0]
-			except Exception:
-				resolved_email = None
-		if resolved_email:
-			body["email"] = resolved_email
-	return jsonify(body), status_code
+	
+	# If login ok, resolve canonical email for redirect to data_test
+	if res.status == 200 and not email:
+		try:
+			conn = get_connection(); cur = conn.cursor()
+			cur.execute("SELECT email FROM users WHERE username=%s", (username,))
+			row = cur.fetchone()
+			close_connection(conn, cur)
+			if row:
+				body["email"] = row[0]
+		except Exception:
+			pass
+	elif res.status == 200:
+		body["email"] = email
+	
+	http_status = res.status if res.status in (200, 400, 401) else 500
+	return jsonify(body), http_status
 
 
 def serve_http():
@@ -297,9 +308,13 @@ def serve_http():
 @app.get("/")
 def serve_test_page():
 	resp = send_from_directory(os.path.dirname(__file__), "user_test.html")
-	resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-	resp.headers['Pragma'] = 'no-cache'
-	resp.headers['Expires'] = '0'
+	cache_headers = {
+		'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+		'Pragma': 'no-cache',
+		'Expires': '0'
+	}
+	for key, val in cache_headers.items():
+		resp.headers[key] = val
 	return resp
 
 

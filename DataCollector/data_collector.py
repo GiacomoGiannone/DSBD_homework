@@ -33,41 +33,51 @@ DATA_DB = {
 
 OPEN_SKY_USER = os.getenv("OPENSKY_USER", "")
 OPEN_SKY_PASS = os.getenv("OPENSKY_PASS", "")
-OPEN_SKY_CLIENT_ID = os.getenv("OPEN_SKY_CLIENT_ID", "")
-OPEN_SKY_CLIENT_SECRET = os.getenv("OPEN_SKY_CLIENT_SECRET", "")
 OPEN_SKY_TOKEN = os.getenv("OPEN_SKY_TOKEN", "")
 AIRPORTS_SOURCE_URL = os.getenv("AIRPORTS_SOURCE_URL", "https://raw.githubusercontent.com/davidmegginson/ourairports-data/master/airports.csv")
 
-REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", str(12*3600)))
+REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "43200"))  # 12 hours default
 GRPC_PORT = int(os.getenv("DATACOLLECTOR_GRPC_PORT", "50052"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-
-
 def get_user_conn():
 	return mysql.connector.connect(**USER_DB)
-
 
 def get_data_conn():
 	return mysql.connector.connect(**DATA_DB)
 
+def close_connection(conn, cur):
+	try:
+		cur.close()
+	except Exception as e:
+		logging.warning("Failed to close cursor: %s", e)
+	try:
+		conn.close()
+	except Exception as e:
+		logging.warning("Failed to close connection: %s", e)
+
+def commit_and_close(conn, cur):
+	try:
+		conn.commit()
+	except Exception as e:
+		logging.warning("Failed to commit transaction: %s", e)
+	close_connection(conn, cur)
 
 def fetch_airports_for_email(email: str):
 	conn = get_user_conn()
 	cur = conn.cursor()
 	cur.execute("SELECT airport_code FROM interests WHERE email=%s", (email,))
 	rows = [r[0] for r in cur.fetchall()]
-	cur.close(); conn.close()
+	close_connection(conn, cur)
 	return rows
-
 
 def fetch_all_airports():
 	conn = get_user_conn()
 	cur = conn.cursor()
 	cur.execute("SELECT DISTINCT airport_code FROM interests")
 	rows = [r[0] for r in cur.fetchall()]
-	cur.close(); conn.close()
+	close_connection(conn, cur)
 	return rows
 
 
@@ -129,7 +139,7 @@ def refresh_flights(airports):
 				count += 1
 			except Exception as e:
 				logging.debug("Skip arrival %s: %s", a, e)
-	conn.commit(); cur.close(); conn.close()
+	commit_and_close(conn, cur)
 	return count
 
 
@@ -139,17 +149,15 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		code = (request.code or '').strip().upper()
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
-		# Basic validation: 3-10 alphanumerics (ICAO/IATA simplified)
-		if not re.fullmatch(r'[A-Z0-9]{3,10}', code):
-			return pb2.GenericResponse(status=400, message='invalid airport code (expected 3-10 A-Z/0-9)')
 		try:
-			conn = get_user_conn(); cur = conn.cursor()
+			conn = get_user_conn()
+			cur = conn.cursor()
 			cur.execute("SELECT 1 FROM interests WHERE email=%s AND airport_code=%s", (email, code))
 			if cur.fetchone():
-				cur.close(); conn.close()
+				close_connection(conn, cur)
 				return pb2.GenericResponse(status=409, message='already exists')
 			cur.execute("INSERT INTO interests (email, airport_code) VALUES (%s,%s)", (email, code))
-			conn.commit(); cur.close(); conn.close()
+			commit_and_close(conn, cur)
 			# Immediate refresh for this airport to populate flights
 			try:
 				refreshed = refresh_flights([code])
@@ -167,23 +175,14 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
 		try:
-			conn = get_user_conn(); cur = conn.cursor()
+			conn = get_user_conn()
+			cur = conn.cursor()
 			cur.execute("DELETE FROM interests WHERE email=%s AND airport_code=%s", (email, code))
 			affected = cur.rowcount
-			conn.commit(); cur.close(); conn.close()
+			commit_and_close(conn, cur)
+			# Optional: purge flights for this airport if no other user is interested
 			if affected == 0:
 				return pb2.GenericResponse(status=404, message='not found')
-			# Optionally purge flights for this airport (global data) if requested via env
-			if os.getenv('PURGE_ON_REMOVE', 'false').lower() in ('1','true','yes','y'):
-				try:
-					dconn = get_data_conn(); dcur = dconn.cursor()
-					dcur.execute("DELETE FROM flights WHERE departure_airport=%s OR arrival_airport=%s", (code, code))
-					purged = dcur.rowcount
-					dconn.commit(); dcur.close(); dconn.close()
-					return pb2.GenericResponse(status=200, message=f'removed; purged {purged} flights')
-				except Exception as e:
-					logging.warning("Purge on remove failed for %s: %s", code, e)
-					return pb2.GenericResponse(status=200, message='removed; purge failed')
 			return pb2.GenericResponse(status=200, message='removed')
 		except Exception as e:
 			logging.exception("RemoveAirport failed")
@@ -210,16 +209,19 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		airports = fetch_airports_for_email(email) if email else fetch_all_airports()
 		if airport_filter and airport_filter not in airports:
 			return pb2.FlightsResponse(flights=[])
-		conn = get_data_conn(); cur = conn.cursor()
+		conn = get_data_conn()
+		cur = conn.cursor()
 		if airport_filter:
 			cur.execute("SELECT icao24,callsign,departure_airport,arrival_airport,departure_time,arrival_time,flight_type FROM flights WHERE departure_airport=%s OR arrival_airport=%s ORDER BY last_refresh DESC LIMIT 500", (airport_filter, airport_filter))
 		else:
 			if not airports:
-				cur.close(); conn.close(); return pb2.FlightsResponse(flights=[])
+				close_connection(conn, cur)
+				return pb2.FlightsResponse(flights=[])
 			placeholders = ','.join(['%s']*len(airports))
 			sql = f"SELECT icao24,callsign,departure_airport,arrival_airport,departure_time,arrival_time,flight_type FROM flights WHERE departure_airport IN ({placeholders}) OR arrival_airport IN ({placeholders}) ORDER BY last_refresh DESC LIMIT 500"
 			cur.execute(sql, airports+airports)
-		rows = cur.fetchall(); cur.close(); conn.close()
+		rows = cur.fetchall()
+		close_connection(conn, cur)
 		flights = [pb2.Flight(icao24=r[0] or '', callsign=r[1] or '', departure_airport=r[2] or '', arrival_airport=r[3] or '', departure_time=r[4] or 0, arrival_time=r[5] or 0, flight_type=r[6] or '') for r in rows]
 		return pb2.FlightsResponse(flights=flights)
 
@@ -307,69 +309,7 @@ if __name__ == '__main__':
 		]
 		return jsonify({'flights': flights})
 
-	# --- Airport suggestions cache & API ---
-	_airports_cache = { 'loaded': False, 'rows': [], 'ts': 0 }
-	_cache_lock = threading.Lock()
-
-	def _load_airports_if_needed(force: bool = False):
-		with _cache_lock:
-			if _airports_cache['loaded'] and not force:
-				return
-			try:
-				logging.info("Loading airports dataset from %s", AIRPORTS_SOURCE_URL)
-				r = requests.get(AIRPORTS_SOURCE_URL, timeout=30)
-				r.raise_for_status()
-				text = r.text
-				rows = []
-				reader = csv.DictReader(StringIO(text))
-				for row in reader:
-					ident = (row.get('ident') or '').strip().upper()
-					iata = (row.get('iata_code') or '').strip().upper()
-					name = (row.get('name') or '').strip()
-					city = (row.get('municipality') or '').strip()
-					country = (row.get('iso_country') or '').strip()
-					atype = (row.get('type') or '').strip()
-					# filter reasonable airports and ident format (3-10 alnum)
-					if atype not in ('large_airport', 'medium_airport', 'small_airport'):
-						continue
-					if not ident or not re.fullmatch(r'[A-Z0-9]{3,10}', ident):
-						continue
-					rows.append({ 'ident': ident, 'iata': iata, 'name': name, 'city': city, 'country': country })
-				_airports_cache['rows'] = rows
-				_airports_cache['loaded'] = True
-				_airports_cache['ts'] = time.time()
-				logging.info("Loaded %d airports for suggestions", len(rows))
-			except Exception as e:
-				logging.warning("Failed loading airports dataset: %s", e)
-				# provide minimal fallback
-				_airports_cache['rows'] = [
-					{ 'ident': 'LIMC', 'iata': 'MXP', 'name': 'Milano Malpensa', 'city': 'Milan', 'country': 'IT' },
-					{ 'ident': 'LIRF', 'iata': 'FCO', 'name': 'Roma Fiumicino', 'city': 'Rome', 'country': 'IT' },
-					{ 'ident': 'EGLL', 'iata': 'LHR', 'name': 'London Heathrow', 'city': 'London', 'country': 'GB' },
-				]
-				_airports_cache['loaded'] = True
-				_airports_cache['ts'] = time.time()
-
-	@app.get('/api/airport_suggest')
-	def api_airport_suggest():
-		q = (request.args.get('q') or '').strip()
-		if not _airports_cache['loaded']:
-			_load_airports_if_needed()
-		if not q:
-			return jsonify({ 'items': [] })
-		q_up = q.upper()
-		items = []
-		for row in _airports_cache['rows']:
-			ident = row['ident']
-			iata = row['iata']
-			name = row['name']
-			city = row['city']
-			country = row['country']
-			if ident.startswith(q_up) or (iata and iata.startswith(q_up)) or (q.lower() in name.lower()):
-				items.append({ 'ident': ident, 'iata': iata, 'name': name, 'city': city, 'country': country })
-				if len(items) >= 10:
-					break
-		return jsonify({ 'items': items })
+	#optional: airport suggestions API
 
 	@app.get('/data_test')
 	def data_test_page():
