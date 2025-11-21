@@ -59,6 +59,11 @@ class DataCollectorServiceStub(object):
                 request_serializer=DataCollector__pb2.FlightsRequest.SerializeToString,
                 response_deserializer=DataCollector__pb2.FlightsResponse.FromString,
                 _registered_method=True)
+        self.AverageFlightsPerDay = channel.unary_unary(
+                '/DataCollectorService/AverageFlightsPerDay',
+                request_serializer=DataCollector__pb2.DaysRequest.SerializeToString,
+                response_deserializer=DataCollector__pb2.DaysRespone.FromString,
+                _registered_method=True)
 
 
 class DataCollectorServiceServicer(object):
@@ -94,6 +99,12 @@ class DataCollectorServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AverageFlightsPerDay(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DataCollectorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -121,6 +132,11 @@ def add_DataCollectorServiceServicer_to_server(servicer, server):
                     servicer.ListFlights,
                     request_deserializer=DataCollector__pb2.FlightsRequest.FromString,
                     response_serializer=DataCollector__pb2.FlightsResponse.SerializeToString,
+            ),
+            'AverageFlightsPerDay': grpc.unary_unary_rpc_method_handler(
+                    servicer.AverageFlightsPerDay,
+                    request_deserializer=DataCollector__pb2.DaysRequest.FromString,
+                    response_serializer=DataCollector__pb2.DaysRespone.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -258,6 +274,33 @@ class DataCollectorService(object):
             '/DataCollectorService/ListFlights',
             DataCollector__pb2.FlightsRequest.SerializeToString,
             DataCollector__pb2.FlightsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AverageFlightsPerDay(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/DataCollectorService/AverageFlightsPerDay',
+            DataCollector__pb2.DaysRequest.SerializeToString,
+            DataCollector__pb2.DaysRespone.FromString,
             options,
             channel_credentials,
             insecure,

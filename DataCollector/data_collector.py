@@ -8,7 +8,7 @@ import mysql.connector
 import grpc
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import re
+from datetime import datetime
 import csv
 from io import StringIO
 
@@ -69,6 +69,54 @@ def fetch_all_airports():
 	close_connection(conn, cur)
 	return rows
 
+def get_average_flights_for_airport(airport_code, days=7):
+    """
+    Compute the average number of daily flights for a specific airport over the past X days
+    """
+    conn = get_data_conn()
+    cur = conn.cursor()
+    
+    # Calculate the timestamp for X days ago
+    x_days_ago = int(time.time()) - (days * 24 * 3600)
+    current_time = int(time.time())
+    
+    # ADD DEBUG LOGGING
+    logging.info(f"🔍 Calculating average for {airport_code} over past {days} days")
+    logging.info(f"   Time range: {x_days_ago} to {current_time}")
+    logging.info(f"   Human readable: {datetime.fromtimestamp(x_days_ago)} to {datetime.fromtimestamp(current_time)}")
+    
+    cur.execute("""
+        SELECT 
+            DATE(FROM_UNIXTIME(departure_time)) AS flight_date, 
+            COUNT(*) AS flight_count
+        FROM flights 
+        WHERE (departure_airport = %s OR arrival_airport = %s)
+          AND departure_time >= %s
+        GROUP BY flight_date
+        ORDER BY flight_date DESC
+    """, (airport_code, airport_code, x_days_ago))
+    
+    rows = cur.fetchall()
+    close_connection(conn, cur)
+    
+    # ADD MORE DEBUG LOGGING
+    logging.info(f"   Found {len(rows)} days with data for {airport_code}")
+    for row in rows[:3]:  # Show first 3 days
+        logging.info(f"      {row[0]}: {row[1]} flights")
+    if len(rows) > 3:
+        logging.info(f"      ... and {len(rows) - 3} more days")
+    
+    if not rows:
+        logging.info(f"   ❌ No data found for {airport_code}")
+        return 0.0
+    
+    # Calculate average
+    total_flights = sum(row[1] for row in rows)
+    average = total_flights / len(rows)
+    
+    logging.info(f"   📊 Total flights: {total_flights}, Days: {len(rows)}, Average: {average}")
+    
+    return round(average, 2)
 
 def opensky_get(url, params):
 	"""Make authenticated request to OpenSky API using OAuth token or basic auth."""
@@ -92,7 +140,7 @@ def opensky_get(url, params):
 
 
 def refresh_flights(airports):
-	begin = int(time.time()) - 12*3600
+	begin = int(time.time()) - 12*3600 #past 7 days
 	end = int(time.time())
 	count = 0
 	conn = get_data_conn()
@@ -214,6 +262,18 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		flights = [pb2.Flight(icao24=r[0] or '', callsign=r[1] or '', departure_airport=r[2] or '', arrival_airport=r[3] or '', departure_time=r[4] or 0, arrival_time=r[5] or 0, flight_type=r[6] or '') for r in rows]
 		return pb2.FlightsResponse(flights=flights)
 
+	def AverageFlightsPerDay(self, request, context):
+		days = request.days if request.days > 0 else 7
+		email = (request.email or '').strip()
+		airports = fetch_airports_for_email(email) if email else fetch_all_airports()
+		if not airports:
+			return pb2.DaysRespone(average=0)
+		total_avg = 0.0
+		for code in airports:
+			avg = get_average_flights_for_airport(code, days)
+			total_avg += avg
+		overall_avg = round(total_avg / len(airports), 2) if airports else 0.0
+		return pb2.DaysRespone(average=overall_avg)
 
 def periodic_loop():
 	while True:
@@ -350,6 +410,15 @@ if __name__ == '__main__':
 		svc = DataCollectorService()
 		res = svc.RefreshFlights(type('Req', (), {'email': email})(), None)
 		return jsonify({'refreshed_count': res.refreshed_count, 'message': res.message})
+	
+	@app.post('/api/average_flights_per_day')
+	def api_average_flights_per_day():
+		data = request.get_json(silent=True) or {}
+		email = (data.get('email') or '').strip()
+		days = int(data.get('days') or 7)
+		svc = DataCollectorService()
+		res = svc.AverageFlightsPerDay(type('Req', (), {'email': email, 'days': days})(), None)
+		return jsonify({'average': res.average})
 
 	@app.post('/api/list_flights')
 	def api_list_flights():
@@ -372,6 +441,65 @@ if __name__ == '__main__':
 		return jsonify({'flights': flights})
 
 	#optional: airport suggestions API
+	@app.post('/api/debug_data_range')
+	def api_debug_data_range():
+		"""Debug endpoint to check what data we actually have"""
+		from datetime import datetime
+		
+		conn = get_data_conn()
+		cur = conn.cursor()
+		
+		# Check overall date range
+		cur.execute("""
+			SELECT 
+				MIN(departure_time) as earliest,
+				MAX(departure_time) as latest,
+				COUNT(*) as total_flights
+			FROM flights
+			WHERE departure_time IS NOT NULL
+		""")
+		
+		overall = cur.fetchone()
+		
+		# Check recent data (last 7 days)
+		seven_days_ago = int(time.time()) - (7 * 24 * 3600)
+		cur.execute("""
+			SELECT COUNT(*) as recent_flights
+			FROM flights 
+			WHERE departure_time >= %s
+		""", (seven_days_ago,))
+		
+		recent = cur.fetchone()[0]
+		
+		# Check data by airport
+		cur.execute("""
+			SELECT departure_airport, COUNT(*) as count
+			FROM flights 
+			GROUP BY departure_airport
+			ORDER BY count DESC
+			LIMIT 10
+		""")
+		
+		airports = cur.fetchall()
+		
+		close_connection(conn, cur)
+		
+		result = {
+			'overall_date_range': {
+				'earliest': datetime.fromtimestamp(overall[0]).isoformat() if overall[0] else None,
+				'latest': datetime.fromtimestamp(overall[1]).isoformat() if overall[1] else None,
+				'total_flights': overall[2]
+			},
+			'recent_data': {
+				'last_7_days_flights': recent,
+				'seven_days_ago_timestamp': seven_days_ago
+			},
+			'top_airports': [
+				{'airport': airport[0], 'flights': airport[1]} for airport in airports
+			]
+		}
+		
+		return jsonify(result)
 
 	@app.get('/data_test')
 	def data_test_page():

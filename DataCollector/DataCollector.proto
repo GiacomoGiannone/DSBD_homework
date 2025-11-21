@@ -9,6 +9,8 @@ message FlightsRequest { string email = 1; string airport = 2; }
 message Flight { string icao24 = 1; string callsign = 2; string departure_airport = 3; string arrival_airport = 4; int64 departure_time = 5; int64 arrival_time = 6; string flight_type = 7; }
 message FlightsResponse { repeated Flight flights = 1; }
 message GenericResponse { int32 status = 1; string message = 2; }
+message DaysRequest { int32 days = 1; }
+message DaysRespone { float average = 1; }
 
 service DataCollectorService {
 	rpc AddAirport(AirportRequest) returns (GenericResponse);
@@ -16,4 +18,5 @@ service DataCollectorService {
 	rpc ListAirports(AirportListRequest) returns (AirportListResponse);
 	rpc RefreshFlights(RefreshRequest) returns (RefreshResponse);
 	rpc ListFlights(FlightsRequest) returns (FlightsResponse);
+	rpc AverageFlightsPerDay(DaysRequest) returns (DaysRespone);
 }
