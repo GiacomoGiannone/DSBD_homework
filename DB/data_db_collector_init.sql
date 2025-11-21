@@ -22,3 +22,12 @@ CREATE TABLE IF NOT EXISTS flights
     KEY idx_departure (departure_airport),
     KEY idx_arrival (arrival_airport)
 );
+
+/* Interests moved from userdb for isolation: no FK to users to avoid cross-DB dependency */
+CREATE TABLE IF NOT EXISTS interests
+(
+    email VARCHAR(255) NOT NULL,
+    airport_code VARCHAR(10) NOT NULL,
+    PRIMARY KEY (email, airport_code),
+    KEY idx_interest_airport (airport_code)
+);

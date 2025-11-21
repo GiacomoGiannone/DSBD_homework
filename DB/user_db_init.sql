@@ -15,13 +15,7 @@ CREATE TABLE IF NOT EXISTS users
     CONSTRAINT uq_users_username UNIQUE (username)
 );
 
-CREATE TABLE IF NOT EXISTS interests
-(
-    email VARCHAR(255) NOT NULL,
-    airport_code VARCHAR(10) NOT NULL,
-    PRIMARY KEY (email, airport_code),
-    FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE
-);
+-- interests table moved to datadb (see data_db_collector_init.sql)
 
 /* At-most-once request log: stores processed request IDs per operation */
 CREATE TABLE IF NOT EXISTS request_log

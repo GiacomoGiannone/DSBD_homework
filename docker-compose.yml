@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   # -------------------------------------------------------
-  # USER DATABASE
+  # USER DATABASE (isolated on user_db_net)
   # -------------------------------------------------------
   userdb:
     image: mysql:8.0
@@ -10,16 +10,17 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: userdb
-    ports:
-      - "3307:3306"     # opzionale — solo se vuoi accedere dall'esterno
+    # Rimuovi la mappatura porta esterna se non serve accesso diretto da host
+    # ports:
+    #   - "3307:3306"
     volumes:
       - userdb_data:/var/lib/mysql
       - ./DB/user_db_init.sql:/docker-entrypoint-initdb.d/user_db_init.sql
     networks:
-      - backend
+      - user_db_net
 
   # -------------------------------------------------------
-  # DATA DATABASE
+  # DATA DATABASE (isolated on data_db_net)
   # -------------------------------------------------------
   datadb:
     image: mysql:8.0
@@ -27,16 +28,16 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: datadb
-    ports:
-      - "3308:3306"     # opzionale
+    # ports:
+    #   - "3308:3306"
     volumes:
       - datadb_data:/var/lib/mysql
       - ./DB/data_db_collector_init.sql:/docker-entrypoint-initdb.d/data_db_collector_init.sql
     networks:
-      - backend
+      - data_db_net
 
   # -------------------------------------------------------
-  # USER MANAGER MICROSERVICE
+  # USER MANAGER MICROSERVICE (app_net + user_db_net)
   # -------------------------------------------------------
   user-manager:
     build: ./UserManager
@@ -53,10 +54,11 @@ services:
     depends_on:
       - userdb
     networks:
-      - backend
+      - app_net
+      - user_db_net
 
   # -------------------------------------------------------
-  # DATA COLLECTOR MICROSERVICE
+  # DATA COLLECTOR MICROSERVICE (app_net + data_db_net)
   # -------------------------------------------------------
   data-collector:
     build: ./DataCollector
@@ -72,8 +74,6 @@ services:
       DB_PASSWORD: root
 
       # OpenSky OAuth credentials (read from DataCollector/credentials.json)
-      # If you have OAuth credentials (preferred), set them in credentials.json
-      # Otherwise, uncomment below for basic auth (not recommended)
       # OPENSKY_USER: "your_username"
       # OPENSKY_PASS: "your_password"
     volumes:
@@ -84,7 +84,8 @@ services:
       - datadb
       - user-manager
     networks:
-      - backend
+      - app_net
+      - data_db_net
 
 # -------------------------------------------------------
 # VOLUMI PERSISTENTI
@@ -97,4 +98,11 @@ volumes:
 # RETE INTERNA
 # -------------------------------------------------------
 networks:
-  backend:
+  app_net:
+    driver: bridge
+  user_db_net:
+    driver: bridge
+    internal: true  # impedisce accesso diretto dall'host agli IP interni
+  data_db_net:
+    driver: bridge
+    internal: true

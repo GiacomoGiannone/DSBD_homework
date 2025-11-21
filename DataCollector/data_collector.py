@@ -15,14 +15,6 @@ from io import StringIO
 import DataCollector_pb2 as pb2
 import DataCollector_pb2_grpc as pb2_grpc
 
-USER_DB = {
-	"host": os.getenv("USER_DB_HOST", "userdb"),
-	"port": int(os.getenv("USER_DB_PORT", "3306")),
-	"database": os.getenv("USER_DB_NAME", "userdb"),
-	"user": os.getenv("USER_DB_USER", "root"),
-	"password": os.getenv("USER_DB_PASSWORD", "root"),
-}
-
 DATA_DB = {
 	"host": os.getenv("DATA_DB_HOST", "datadb"),
 	"port": int(os.getenv("DATA_DB_PORT", "3306")),
@@ -40,9 +32,6 @@ REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "43200"))  
 GRPC_PORT = int(os.getenv("DATACOLLECTOR_GRPC_PORT", "50052"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-
-def get_user_conn():
-	return mysql.connector.connect(**USER_DB)
 
 def get_data_conn():
 	return mysql.connector.connect(**DATA_DB)
@@ -65,7 +54,7 @@ def commit_and_close(conn, cur):
 	close_connection(conn, cur)
 
 def fetch_airports_for_email(email: str):
-	conn = get_user_conn()
+	conn = get_data_conn()
 	cur = conn.cursor()
 	cur.execute("SELECT airport_code FROM interests WHERE email=%s", (email,))
 	rows = [r[0] for r in cur.fetchall()]
@@ -73,7 +62,7 @@ def fetch_airports_for_email(email: str):
 	return rows
 
 def fetch_all_airports():
-	conn = get_user_conn()
+	conn = get_data_conn()
 	cur = conn.cursor()
 	cur.execute("SELECT DISTINCT airport_code FROM interests")
 	rows = [r[0] for r in cur.fetchall()]
@@ -150,7 +139,7 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
 		try:
-			conn = get_user_conn()
+			conn = get_data_conn()
 			cur = conn.cursor()
 			cur.execute("SELECT 1 FROM interests WHERE email=%s AND airport_code=%s", (email, code))
 			if cur.fetchone():
@@ -175,7 +164,7 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
 		try:
-			conn = get_user_conn()
+			conn = get_data_conn()
 			cur = conn.cursor()
 			cur.execute("DELETE FROM interests WHERE email=%s AND airport_code=%s", (email, code))
 			affected = cur.rowcount
