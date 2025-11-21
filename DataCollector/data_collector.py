@@ -110,7 +110,7 @@ def refresh_flights(airports):
 					VALUES (%s,%s,%s,%s,%s,%s,'DEPARTURE')
 					ON DUPLICATE KEY UPDATE callsign=VALUES(callsign), arrival_airport=VALUES(arrival_airport), arrival_time=VALUES(arrival_time)
 					""",
-					(d.get('icao24'), d.get('callsign'), d.get('airport'), d.get('estArrivalAirport'), d.get('firstSeen'), d.get('lastSeen'))
+					(d.get('icao24'), d.get('callsign'), code, d.get('estArrivalAirport'), d.get('firstSeen'), d.get('lastSeen'))
 				)
 				count += 1
 			except Exception as e:
@@ -123,7 +123,7 @@ def refresh_flights(airports):
 					VALUES (%s,%s,%s,%s,%s,%s,'ARRIVAL')
 					ON DUPLICATE KEY UPDATE callsign=VALUES(callsign), departure_airport=VALUES(departure_airport), departure_time=VALUES(departure_time)
 					""",
-					(a.get('icao24'), a.get('callsign'), a.get('estDepartureAirport'), a.get('airport'), a.get('firstSeen'), a.get('lastSeen'))
+					(a.get('icao24'), a.get('callsign'), a.get('estDepartureAirport'), code, a.get('firstSeen'), a.get('lastSeen'))
 				)
 				count += 1
 			except Exception as e:
