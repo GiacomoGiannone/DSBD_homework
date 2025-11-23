@@ -84,10 +84,16 @@
         const airport = document.getElementById('filter-airport').value.trim().toUpperCase();
         api('/api/list_flights', { email, airport }, document.getElementById('out-list-flights'));
       });
-      //get average flights per day
+      // Average flights per day for specific airport
       document.getElementById('btn-average-flights').addEventListener('click', () => {
-        const days = parseInt(document.getElementById('days-input').value.trim());
-        api('/api/average_flights_per_day', { email, days }, document.getElementById('out-average-flights'));
+        const airport = document.getElementById('avg-airport').value.trim().toUpperCase();
+        const days = parseInt(document.getElementById('days-input').value.trim()) || 7;
+        api('/api/average_flights_per_day', { airport, days }, document.getElementById('out-average-flights'));
+      });
+      // Last flights (departure & arrival)
+      document.getElementById('btn-last-flights').addEventListener('click', () => {
+        const airport = document.getElementById('last-airport').value.trim().toUpperCase();
+        api('/api/last_flights', { airport }, document.getElementById('out-last-flights'));
       });
       // Add to your wire() function
       document.getElementById('btn-debug-data').addEventListener('click', () => {
@@ -154,13 +160,23 @@
   </div>
 
   <div class="card">
-  <h2>Average Flights Per Day</h2>
-  <div class="row">
-    <input id="days-input" placeholder="Number of days (default: 7)" type="number" value="7" />
-    <button id="btn-average-flights">Get Average</button>
+    <h2>Average Flights Per Day (Airport)</h2>
+    <div class="row">
+      <input id="avg-airport" placeholder="ICAO (es. LIMC)" />
+      <input id="days-input" placeholder="Days (default 7)" type="number" value="7" />
+      <button id="btn-average-flights">Get Average</button>
+    </div>
+    <div id="out-average-flights" class="out"></div>
   </div>
-  <div id="out-average-flights" class="out"></div>
-</div>
+
+  <div class="card">
+    <h2>Last Flights</h2>
+    <div class="row">
+      <input id="last-airport" placeholder="ICAO (es. LIMC)" />
+      <button id="btn-last-flights">Get Last Flights</button>
+    </div>
+    <div id="out-last-flights" class="out"></div>
+  </div>
 
 </body>
 </html>

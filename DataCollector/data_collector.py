@@ -8,7 +8,7 @@ import mysql.connector
 import grpc
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
 from io import StringIO
 
@@ -69,54 +69,55 @@ def fetch_all_airports():
 	close_connection(conn, cur)
 	return rows
 
-def get_average_flights_for_airport(airport_code, days=7):
-    """
-    Compute the average number of daily flights for a specific airport over the past X days
-    """
-    conn = get_data_conn()
-    cur = conn.cursor()
-    
-    # Calculate the timestamp for X days ago
-    x_days_ago = int(time.time()) - (days * 24 * 3600)
-    current_time = int(time.time())
-    
-    # ADD DEBUG LOGGING
-    logging.info(f"🔍 Calculating average for {airport_code} over past {days} days")
-    logging.info(f"   Time range: {x_days_ago} to {current_time}")
-    logging.info(f"   Human readable: {datetime.fromtimestamp(x_days_ago)} to {datetime.fromtimestamp(current_time)}")
-    
-    cur.execute("""
-        SELECT 
-            DATE(FROM_UNIXTIME(departure_time)) AS flight_date, 
-            COUNT(*) AS flight_count
-        FROM flights 
-        WHERE (departure_airport = %s OR arrival_airport = %s)
-          AND departure_time >= %s
-        GROUP BY flight_date
-        ORDER BY flight_date DESC
-    """, (airport_code, airport_code, x_days_ago))
-    
-    rows = cur.fetchall()
-    close_connection(conn, cur)
-    
-    # ADD MORE DEBUG LOGGING
-    logging.info(f"   Found {len(rows)} days with data for {airport_code}")
-    for row in rows[:3]:  # Show first 3 days
-        logging.info(f"      {row[0]}: {row[1]} flights")
-    if len(rows) > 3:
-        logging.info(f"      ... and {len(rows) - 3} more days")
-    
-    if not rows:
-        logging.info(f"   ❌ No data found for {airport_code}")
-        return 0.0
-    
-    # Calculate average
-    total_flights = sum(row[1] for row in rows)
-    average = total_flights / len(rows)
-    
-    logging.info(f"   📊 Total flights: {total_flights}, Days: {len(rows)}, Average: {average}")
-    
-    return round(average, 2)
+def compute_average_flights_for_airport(airport_code: str, days: int = 7):
+	"""Return (avg_total, avg_departures, avg_arrivals) over last N calendar days (including zeros).
+	Fixes off-by-one day and dictionary key mismatch.
+	"""
+	if days <= 0:
+		days = 7
+	end_ts = int(time.time())
+	# Use (days-1) so inclusive range covers exactly 'days' distinct dates
+	start_ts = end_ts - ((days - 1) * 24 * 3600)
+	conn = get_data_conn(); cur = conn.cursor()
+	# Departures per day
+	cur.execute(
+		"""
+		SELECT DATE(FROM_UNIXTIME(departure_time)) d, COUNT(*) c
+		FROM flights
+		WHERE departure_airport=%s AND flight_type='DEPARTURE' AND departure_time BETWEEN %s AND %s
+		GROUP BY d
+		""",
+		(airport_code, start_ts, end_ts)
+	)
+	dep_rows = {r[0]: r[1] for r in cur.fetchall()}
+	# Arrivals per day
+	cur.execute(
+		"""
+		SELECT DATE(FROM_UNIXTIME(arrival_time)) d, COUNT(*) c
+		FROM flights
+		WHERE arrival_airport=%s AND flight_type='ARRIVAL' AND arrival_time BETWEEN %s AND %s
+		GROUP BY d
+		""",
+		(airport_code, start_ts, end_ts)
+	)
+	arr_rows = {r[0]: r[1] for r in cur.fetchall()}
+	close_connection(conn, cur)
+	# Build list of all days inclusive
+	day_list = []
+	current_day = datetime.fromtimestamp(start_ts).date()
+	last_day = datetime.fromtimestamp(end_ts).date()
+	while current_day <= last_day:
+		day_list.append(current_day)
+		current_day = current_day + timedelta(days=1)
+	# Keys in dep_rows/arr_rows are date objects; look them up directly
+	total_dep = sum(dep_rows.get(d, 0) for d in day_list)
+	total_arr = sum(arr_rows.get(d, 0) for d in day_list)
+	denom = len(day_list) if day_list else 1
+	avg_dep = total_dep / denom
+	avg_arr = total_arr / denom
+	avg_total = (total_dep + total_arr) / denom
+	logging.info(f"Average for {airport_code} over {days} days: dep={avg_dep:.2f} arr={avg_arr:.2f} total={avg_total:.2f}")
+	return round(avg_total,2), round(avg_dep,2), round(avg_arr,2)
 
 def opensky_get(url, params):
 	"""Make authenticated request to OpenSky API using OAuth token or basic auth."""
@@ -263,17 +264,40 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		return pb2.FlightsResponse(flights=flights)
 
 	def AverageFlightsPerDay(self, request, context):
-		days = request.days if request.days > 0 else 7
-		email = (request.email or '').strip()
-		airports = fetch_airports_for_email(email) if email else fetch_all_airports()
-		if not airports:
-			return pb2.DaysRespone(average=0)
-		total_avg = 0.0
-		for code in airports:
-			avg = get_average_flights_for_airport(code, days)
-			total_avg += avg
-		overall_avg = round(total_avg / len(airports), 2) if airports else 0.0
-		return pb2.DaysRespone(average=overall_avg)
+		airport = (getattr(request, 'airport', '') or '').strip().upper()
+		days = getattr(request, 'days', 0) or 0
+		if not airport:
+			return pb2.DaysResponse(average=0, average_departures=0, average_arrivals=0, airport='', days=days if days>0 else 7)
+		avg_total, avg_dep, avg_arr = compute_average_flights_for_airport(airport, days if days>0 else 7)
+		return pb2.DaysResponse(average=avg_total, average_departures=avg_dep, average_arrivals=avg_arr, airport=airport, days=days if days>0 else 7)
+
+	def LastFlights(self, request, context):
+		airport = (getattr(request, 'airport', '') or '').strip().upper()
+		if not airport:
+			return pb2.LastFlightsResponse()
+		conn = get_data_conn(); cur = conn.cursor()
+		cur.execute(
+			"""
+			SELECT icao24,callsign,departure_airport,arrival_airport,departure_time,arrival_time,flight_type
+			FROM flights WHERE departure_airport=%s AND flight_type='DEPARTURE' AND departure_time IS NOT NULL
+			ORDER BY departure_time DESC LIMIT 1
+			""",
+			(airport,)
+		)
+		dep_row = cur.fetchone()
+		cur.execute(
+			"""
+			SELECT icao24,callsign,departure_airport,arrival_airport,departure_time,arrival_time,flight_type
+			FROM flights WHERE arrival_airport=%s AND flight_type='ARRIVAL' AND arrival_time IS NOT NULL
+			ORDER BY arrival_time DESC LIMIT 1
+			""",
+			(airport,)
+		)
+		arr_row = cur.fetchone()
+		close_connection(conn, cur)
+		last_dep = pb2.Flight(icao24=dep_row[0], callsign=dep_row[1] or '', departure_airport=dep_row[2] or '', arrival_airport=dep_row[3] or '', departure_time=dep_row[4] or 0, arrival_time=dep_row[5] or 0, flight_type=dep_row[6] or '') if dep_row else None
+		last_arr = pb2.Flight(icao24=arr_row[0], callsign=arr_row[1] or '', departure_airport=arr_row[2] or '', arrival_airport=arr_row[3] or '', departure_time=arr_row[4] or 0, arrival_time=arr_row[5] or 0, flight_type=arr_row[6] or '') if arr_row else None
+		return pb2.LastFlightsResponse(last_departure=last_dep, last_arrival=last_arr)
 
 def periodic_loop():
 	while True:
@@ -414,11 +438,54 @@ if __name__ == '__main__':
 	@app.post('/api/average_flights_per_day')
 	def api_average_flights_per_day():
 		data = request.get_json(silent=True) or {}
-		email = (data.get('email') or '').strip()
+		airport = (data.get('airport') or '').strip().upper()
 		days = int(data.get('days') or 7)
 		svc = DataCollectorService()
-		res = svc.AverageFlightsPerDay(type('Req', (), {'email': email, 'days': days})(), None)
-		return jsonify({'average': res.average})
+		res = svc.AverageFlightsPerDay(type('Req', (), {'airport': airport, 'days': days})(), None)
+		# Ensure two-decimal formatting in JSON output
+		payload = {
+			'airport': res.airport,
+			'days': res.days,
+			'average_total': round(res.average, 2),
+			'average_departures': round(res.average_departures, 2),
+			'average_arrivals': round(res.average_arrivals, 2)
+		}
+		return jsonify(payload)
+
+	@app.post('/api/last_flights')
+	def api_last_flights():
+		data = request.get_json(silent=True) or {}
+		airport = (data.get('airport') or '').strip().upper()
+		svc = DataCollectorService()
+		res = svc.LastFlights(type('Req', (), {'airport': airport})(), None)
+		def fmt(ts):
+			return datetime.utcfromtimestamp(ts).isoformat() if ts else None
+		resp = {}
+		if res.last_departure:
+			resp['last_departure'] = {
+				'icao24': res.last_departure.icao24,
+				'callsign': res.last_departure.callsign.strip(),
+				'departure_airport': res.last_departure.departure_airport,
+				'arrival_airport': res.last_departure.arrival_airport,
+				'departure_time_epoch': res.last_departure.departure_time,
+				'arrival_time_epoch': res.last_departure.arrival_time,
+				'departure_time': fmt(res.last_departure.departure_time),
+				'arrival_time': fmt(res.last_departure.arrival_time),
+				'flight_type': res.last_departure.flight_type
+			}
+		if res.last_arrival:
+			resp['last_arrival'] = {
+				'icao24': res.last_arrival.icao24,
+				'callsign': res.last_arrival.callsign.strip(),
+				'departure_airport': res.last_arrival.departure_airport,
+				'arrival_airport': res.last_arrival.arrival_airport,
+				'departure_time_epoch': res.last_arrival.departure_time,
+				'arrival_time_epoch': res.last_arrival.arrival_time,
+				'departure_time': fmt(res.last_arrival.departure_time),
+				'arrival_time': fmt(res.last_arrival.arrival_time),
+				'flight_type': res.last_arrival.flight_type
+			}
+		return jsonify(resp)
 
 	@app.post('/api/list_flights')
 	def api_list_flights():
@@ -427,17 +494,21 @@ if __name__ == '__main__':
 		airport = (data.get('airport') or '').strip().upper()
 		svc = DataCollectorService()
 		res = svc.ListFlights(type('Req', (), {'email': email, 'airport': airport})(), None)
-		flights = [
-			{
+		def fmt(ts):
+			return datetime.utcfromtimestamp(ts).isoformat() if ts else None
+		flights = []
+		for f in res.flights:
+			flights.append({
 				'icao24': f.icao24,
-				'callsign': f.callsign,
+				'callsign': f.callsign.strip(),
 				'departure_airport': f.departure_airport,
 				'arrival_airport': f.arrival_airport,
-				'departure_time': f.departure_time,
-				'arrival_time': f.arrival_time,
+				'departure_time_epoch': f.departure_time,
+				'arrival_time_epoch': f.arrival_time,
+				'departure_time': fmt(f.departure_time),
+				'arrival_time': fmt(f.arrival_time),
 				'flight_type': f.flight_type,
-			} for f in res.flights
-		]
+			})
 		return jsonify({'flights': flights})
 
 	#optional: airport suggestions API
