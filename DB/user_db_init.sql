@@ -10,8 +10,6 @@ CREATE TABLE IF NOT EXISTS users
     email VARCHAR(255) PRIMARY KEY,
     username VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL,
-    iban VARCHAR(50) DEFAULT NULL,
-    codice_fiscale VARCHAR(16) DEFAULT NULL,
     CONSTRAINT uq_users_username UNIQUE (username)
 );
 
