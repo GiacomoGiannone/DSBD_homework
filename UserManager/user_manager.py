@@ -238,7 +238,7 @@ class UserService(pb2_grpc.UserServiceServicer):
 			return pb2.userResponse(status=500, message=str(e))
 
 	def LoginUser(self, request, context):
-		_, username, password, email = get_request_attributes(request)
+		username, password, email, _ = get_request_attributes(request)
 		if (not email and not username) or not password:
 			return pb2.userResponse(status=400, message="email or username and password required")
 		try:
