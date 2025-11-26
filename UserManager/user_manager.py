@@ -11,6 +11,7 @@ import bcrypt
 
 import UserService_pb2 as pb2
 import UserService_pb2_grpc as pb2_grpc
+import hashlib
 
 
 DB_CONFIG = {
@@ -70,33 +71,41 @@ def verify_password(plain: str, stored_hash: str) -> bool:
 		return False
 	
 def get_request_attributes(request):
-		request_id = (getattr(request, "request_id", "") or "").strip()
-		username = (getattr(request, "username", "") or "").strip()
-		password = getattr(request, "password", "") or ""
-		email = (getattr(request, "email", "") or "").strip()
-		return request_id, username, password, email
+	username = (getattr(request, "username", "") or "").strip()
+	password = getattr(request, "password", "") or ""
+	email = (getattr(request, "email", "") or "").strip()
+	operation = (getattr(request, "operation", "") or "").strip()
+	return username, password, email, operation
+
+def compute_request_id(email: str, username: str, operation: str, ts_iso: str) -> str:
+    raw = f"{email}|{username}|{operation}|{ts_iso}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 class UserService(pb2_grpc.UserServiceServicer):
 	def AddUser(self, request, context):
-		request_id, username, password, email = get_request_attributes(request)
-		# Require all fields including request_id for at-most-once semantics
-		if not request_id or not email or not username or not password:
-			return pb2.userResponse(status=400, message="request_id, email, username and password are required")
+		username, password, email, operation = get_request_attributes(request)
+		# Require all fields (server will generate request_id from hash)
+		if not email or not username or not password:
+			return pb2.userResponse(status=400, message="email, username and password are required")
+		# Operation is optional here; default to AddUser if missing
+		if not operation:
+			operation = 'AddUser'
 		pwd_hash = hash_password(password)
 
 		try:
 			conn = get_connection() 
 			cur = conn.cursor()
-			# Attempt to insert request_id first (transaction). If duplicate, treat as already processed.
+			# Generate ts and request_id; then insert into request_log
+			ts_iso = time.strftime("%Y-%m-%d %H:%M:%S")
+			request_id = compute_request_id(email, username, operation, ts_iso)
 			try:
-				cur.execute("INSERT INTO request_log (request_id, operation) VALUES (%s,%s)", (request_id, 'AddUser'))
+				cur.execute("INSERT INTO request_log (request_id, operation, ts) VALUES (%s,%s,%s)", (request_id, operation, ts_iso))
 			except Exception as e:
-				# Duplicate PK or other error -> if duplicate assume already processed
 				error_no = getattr(e, 'errno', None)
 				logging.error(f"request_log insert error - errno={error_no}, type={type(e).__name__}, msg={str(e)}")
 				if error_no in (1062,):  # MySQL duplicate key
 					close_connection(conn, cur)
-					return pb2.userResponse(status=401, message="Request ID already processed")
+					return pb2.userResponse(status=401, message="Request already processed")
 				logging.exception("request_log insert failed")
 				close_connection(conn, cur)
 				return pb2.userResponse(status=500, message=f"request_log error: {str(e)}")
@@ -130,15 +139,19 @@ class UserService(pb2_grpc.UserServiceServicer):
 			return pb2.userResponse(status=500, message=str(e))
 
 	def DeleteUser(self, request, context):
-		request_id, username, password, email = get_request_attributes(request)
-		if not request_id or ((not email and not username) or not password):
-			return pb2.userResponse(status=400, message="request_id and (email or username) and password required")
+		username, password, email, operation = get_request_attributes(request)
+		if ((not email and not username) or not password):
+			return pb2.userResponse(status=400, message="(email or username) and password required")
+		if not operation:
+			operation = 'DeleteUser'
 		try:
 			conn = get_connection() 
 			cur = conn.cursor()
-			# Insert request_id first; if duplicate we skip all
+			# Insert generated request_id; if duplicate we skip all
+			ts_iso = time.strftime("%Y-%m-%d %H:%M:%S")
+			request_id = compute_request_id(email, username, operation, ts_iso)
 			try:
-				cur.execute("INSERT INTO request_log (request_id, operation) VALUES (%s,%s)", (request_id, 'DeleteUser'))
+				cur.execute("INSERT INTO request_log (request_id, operation, ts) VALUES (%s,%s,%s)", (request_id, operation, ts_iso))
 			except Exception as e:
 				if getattr(e, 'errno', None) in (1062,):
 					close_connection(conn, cur)
@@ -241,10 +254,10 @@ def _get_request_data():
 def http_add():
 	data = _get_request_data()
 	req = types.SimpleNamespace(
-		request_id=(data.get("request_id") or "").strip(),
 		username=(data.get("username") or "").strip(),
 		password=data.get("password") or "",
-		email=(data.get("email") or "").strip()
+		email=(data.get("email") or "").strip(),
+		operation=(data.get("operation") or "AddUser").strip()
 	)
 	res = UserService().AddUser(req, None)
 	http_status = 201 if res.status == 201 else res.status
@@ -258,10 +271,10 @@ def http_delete():
 	email = identity if "@" in identity else ""
 	username = identity if "@" not in identity else ""
 	req = types.SimpleNamespace(
-		request_id=(data.get("request_id") or "").strip(),
 		username=username,
 		email=email,
-		password=data.get("password") or ""
+		password=data.get("password") or "",
+		operation=(data.get("operation") or "DeleteUser").strip()
 	)
 	res = UserService().DeleteUser(req, None)
 	http_status = res.status if res.status in (200, 400, 401, 404, 409) else 500

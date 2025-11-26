@@ -41,22 +41,21 @@
 		function getVal(id) { return document.getElementById(id).value.trim(); }
 
 		function wire() {
-			// Nessuna generazione automatica: l'utente inserisce manualmente il request_id
+			// Il server genera automaticamente request_id basato su email, username, operation e timestamp.
 
 			// Add User (email + username + password obbligatori)
 			const addBtn = document.getElementById('btn-add');
 			addBtn.addEventListener('click', () => {
-				const request_id = getVal('add-request-id');
 				const email = getVal('add-email');
 				const username = getVal('add-username');
 				const password = document.getElementById('add-password').value; // allow spaces
 				const out = document.getElementById('out-add');
-				if (!request_id || !email || !username || !password) {
-					out.textContent = 'Compila request_id, email, username e password';
+				if (!email || !username || !password) {
+					out.textContent = 'Compila email, username e password';
 					out.className = 'out warn';
 					return;
 				}
-				api('/add', { request_id, email, username, password }, out);
+				api('/add', { operation: 'AddUser', email, username, password }, out);
 			});
 
 			// Login (email O username) + password
@@ -95,16 +94,15 @@
 			// Delete (email O username) + password
 			const delBtn = document.getElementById('btn-del');
 			delBtn.addEventListener('click', () => {
-				const request_id = getVal('del-request-id');
 				const identity = getVal('del-identity');
 				const password = document.getElementById('del-password').value;
 				const out = document.getElementById('out-del');
-				if (!request_id || !identity || !password) {
-					out.textContent = 'Compila request_id ed email o username e password';
+				if (!identity || !password) {
+					out.textContent = 'Compila email o username e password';
 					out.className = 'out warn';
 					return;
 				}
-				api('/delete', { request_id, identity, password }, out);
+				api('/delete', { operation: 'DeleteUser', identity, password }, out);
 			});
 		}
 
@@ -117,13 +115,9 @@
 	<h1>User Manager Tester</h1>
 	<p>Assicurati che il servizio sia in esecuzione su <code>http://localhost:8081</code>.</p>
 
-	<div class="card">
+		<div class="card">
 		<h2>1) Create User</h2>
 		<div class="row">
-			<div>
-				<label for="add-request-id">Request ID (inserisci tu)</label>
-				<input id="add-request-id" type="text" placeholder="es: req-123" />
-			</div>
 			<div>
 				<label for="add-email">Email</label>
 				<input id="add-email" type="email" placeholder="alice@example.com" />
@@ -161,13 +155,9 @@
 		<div id="out-login" class="out"></div>
 	</div>
 
-	<div class="card">
+		<div class="card">
 		<h2>3) Delete</h2>
 		<div class="row">
-			<div>
-				<label for="del-request-id">Request ID (inserisci tu)</label>
-				<input id="del-request-id" type="text" placeholder="es: req-456" />
-			</div>
 			<div>
 				<label for="del-identity">Email o Username</label>
 				<input id="del-identity" type="text" placeholder="alice@example.com oppure alice" />
