@@ -365,13 +365,6 @@ def serve_test_page():
 		resp.headers[key] = val
 	return resp
 
-
-@app.get("/data_test")
-def serve_data_page():
-	# Page moved to DataCollector service; keep backwards compatibility by redirect hint
-	return jsonify({"moved": True, "location": "http://localhost:8082/data_test"}), 301
-
-
 if __name__ == "__main__":
 	logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 	try:
