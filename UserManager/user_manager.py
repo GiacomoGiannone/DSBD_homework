@@ -98,14 +98,23 @@ class UserService(pb2_grpc.UserServiceServicer):
 			# Generate ts and request_id; then insert into request_log
 			ts_iso = time.strftime("%Y-%m-%d %H:%M:%S")
 			request_id = compute_request_id(email, username, operation, ts_iso)
+			# We'll insert initial log with a placeholder message; then update it after successful op
 			try:
-				cur.execute("INSERT INTO request_log (request_id, operation, ts) VALUES (%s,%s,%s)", (request_id, operation, ts_iso))
+				cur.execute("INSERT INTO request_log (request_id, operation, ts, message, status_code) VALUES (%s,%s,%s,%s,%s)", (request_id, operation, ts_iso, "processing", None))
 			except Exception as e:
 				error_no = getattr(e, 'errno', None)
 				logging.error(f"request_log insert error - errno={error_no}, type={type(e).__name__}, msg={str(e)}")
 				if error_no in (1062,):  # MySQL duplicate key
+					# Fetch and return the original message
+					try:
+						cur.execute("SELECT message, status_code FROM request_log WHERE request_id=%s", (request_id,))
+						row = cur.fetchone()
+						msg = row[0] if row and row[0] else "Request already processed"
+						status = row[1] if row and row[1] is not None else (200 if msg == "user created" else 401)
+					except Exception:
+						msg = "Request already processed"; status = 401
 					close_connection(conn, cur)
-					return pb2.userResponse(status=401, message="Request already processed")
+					return pb2.userResponse(status=status, message=msg)
 				logging.exception("request_log insert failed")
 				close_connection(conn, cur)
 				return pb2.userResponse(status=500, message=f"request_log error: {str(e)}")
@@ -113,10 +122,18 @@ class UserService(pb2_grpc.UserServiceServicer):
 			# Email uniqueness
 			cur.execute("SELECT 1 FROM users WHERE email=%s", (email,))
 			if cur.fetchone() is not None:
+				try:
+					cur.execute("UPDATE request_log SET message=%s, status_code=%s WHERE request_id=%s", ("user already exists", 409, request_id))
+				except Exception:
+					pass
 				close_connection_with_rollback(conn, cur)
 				return pb2.userResponse(status=409, message="user already exists")
 			cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
 			if cur.fetchone() is not None:
+				try:
+					cur.execute("UPDATE request_log SET message=%s, status_code=%s WHERE request_id=%s", ("username already exists", 409, request_id))
+				except Exception:
+					pass
 				close_connection_with_rollback(conn, cur)
 				return pb2.userResponse(status=409, message="username already exists")
 
@@ -127,6 +144,11 @@ class UserService(pb2_grpc.UserServiceServicer):
 				""",
 				(email, username, pwd_hash),
 			)
+			# Update log message to final outcome
+			try:
+				cur.execute("UPDATE request_log SET message=%s, status_code=%s WHERE request_id=%s", ("user created", 201, request_id))
+			except Exception:
+				pass
 			conn.commit() 
 			close_connection(conn, cur)
 			return pb2.userResponse(status=201, message="user created")
@@ -151,11 +173,19 @@ class UserService(pb2_grpc.UserServiceServicer):
 			ts_iso = time.strftime("%Y-%m-%d %H:%M:%S")
 			request_id = compute_request_id(email, username, operation, ts_iso)
 			try:
-				cur.execute("INSERT INTO request_log (request_id, operation, ts) VALUES (%s,%s,%s)", (request_id, operation, ts_iso))
+				cur.execute("INSERT INTO request_log (request_id, operation, ts, message, status_code) VALUES (%s,%s,%s,%s,%s)", (request_id, operation, ts_iso, "processing", None))
 			except Exception as e:
 				if getattr(e, 'errno', None) in (1062,):
+					# Fetch and return the original message
+					try:
+						cur.execute("SELECT message, status_code FROM request_log WHERE request_id=%s", (request_id,))
+						row = cur.fetchone()
+						msg = row[0] if row and row[0] else "already processed"
+						status = row[1] if row and row[1] is not None else 200
+					except Exception:
+						msg = "already processed"; status = 200
 					close_connection(conn, cur)
-					return pb2.userResponse(status=200, message="already processed")
+					return pb2.userResponse(status=status, message=msg)
 				logging.exception("request_log insert failed")
 				close_connection(conn, cur)
 				return pb2.userResponse(status=500, message="request_log error")
@@ -189,6 +219,11 @@ class UserService(pb2_grpc.UserServiceServicer):
 
 			cur.execute("DELETE FROM users WHERE email=%s", (resolved_email,))
 			affected = cur.rowcount
+			# Update log message to final outcome
+			try:
+				cur.execute("UPDATE request_log SET message=%s, status_code=%s WHERE request_id=%s", ("user deleted", 200, request_id))
+			except Exception:
+				pass
 			conn.commit()
 			close_connection(conn, cur)
 			if affected == 0:
