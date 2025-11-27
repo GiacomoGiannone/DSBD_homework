@@ -88,16 +88,16 @@
       document.getElementById('btn-average-flights').addEventListener('click', () => {
         const airport = document.getElementById('avg-airport').value.trim().toUpperCase();
         const days = parseInt(document.getElementById('days-input').value.trim()) || 7;
-        api('/api/average_flights_per_day', { airport, days }, document.getElementById('out-average-flights'));
+        api('/api/average_flights_per_day', { email, airport, days }, document.getElementById('out-average-flights'));
       });
       // Last flights (departure & arrival)
       document.getElementById('btn-last-flights').addEventListener('click', () => {
         const airport = document.getElementById('last-airport').value.trim().toUpperCase();
-        api('/api/last_flights', { airport }, document.getElementById('out-last-flights'));
+        api('/api/last_flights', { email, airport }, document.getElementById('out-last-flights'));
       });
       // Add to your wire() function
       document.getElementById('btn-debug-data').addEventListener('click', () => {
-      api('/api/debug_data_range', {}, document.getElementById('out-debug-data'));
+      api('/api/debug_data_range', { email }, document.getElementById('out-debug-data'));
       });
     }
     window.addEventListener('DOMContentLoaded', wire);

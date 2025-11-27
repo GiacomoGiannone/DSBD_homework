@@ -365,6 +365,30 @@ def serve_test_page():
 		resp.headers[key] = val
 	return resp
 
+
+# Lightweight existence check for other services
+@app.get("/exists")
+def http_exists():
+	identity = (request.args.get("email") or "").strip()
+	username = (request.args.get("username") or "").strip()
+	try:
+		conn = get_connection(); cur = conn.cursor()
+		exists = False
+		if identity:
+			cur.execute("SELECT 1 FROM users WHERE email=%s", (identity,))
+			exists = cur.fetchone() is not None
+		elif username:
+			cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
+			exists = cur.fetchone() is not None
+		else:
+			close_connection(conn, cur)
+			return jsonify({"error": "email or username required"}), 400
+		close_connection(conn, cur)
+		return jsonify({"exists": bool(exists)})
+	except Exception as e:
+		logging.exception("/exists failed")
+		return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
 	logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 	try:

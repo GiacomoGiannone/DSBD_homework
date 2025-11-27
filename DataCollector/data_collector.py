@@ -15,6 +15,10 @@ from io import StringIO
 import DataCollector_pb2 as pb2
 import DataCollector_pb2_grpc as pb2_grpc
 
+# User Manager HTTP endpoint for existence checks
+USER_MANAGER_HOST = os.getenv("USER_MANAGER_HOST", "user-manager")
+USER_MANAGER_HTTP_PORT = int(os.getenv("USER_MANAGER_HTTP_PORT", "8081"))
+
 DATA_DB = {
 	"host": os.getenv("DATA_DB_HOST", "datadb"),
 	"port": int(os.getenv("DATA_DB_PORT", "3306")),
@@ -68,6 +72,22 @@ def fetch_all_airports():
 	rows = [r[0] for r in cur.fetchall()]
 	close_connection(conn, cur)
 	return rows
+
+def user_exists(email: str) -> bool:
+	email = (email or '').strip()
+	if not email:
+		return False
+	try:
+		url = f"http://{USER_MANAGER_HOST}:{USER_MANAGER_HTTP_PORT}/exists"
+		r = requests.get(url, params={"email": email}, timeout=5)
+		if r.status_code != 200:
+			logging.warning("UserManager /exists returned %s for %s", r.status_code, email)
+			return False
+		body = r.json()
+		return bool(body.get("exists"))
+	except Exception as e:
+		logging.warning("UserManager /exists call failed: %s", e)
+		return False
 
 def compute_average_flights_for_airport(airport_code: str, days: int = 7):
 	"""Return (avg_total, avg_departures, avg_arrivals) over last N calendar days (including zeros).
@@ -187,6 +207,8 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		code = (request.code or '').strip().upper()
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
+		if not user_exists(email):
+			return pb2.GenericResponse(status=404, message='user not found')
 		try:
 			conn = get_data_conn()
 			cur = conn.cursor()
@@ -212,6 +234,8 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		code = (request.code or '').strip().upper()
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
+		if not user_exists(email):
+			return pb2.GenericResponse(status=404, message='user not found')
 		try:
 			conn = get_data_conn()
 			cur = conn.cursor()
@@ -230,11 +254,15 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		email = (request.email or '').strip()
 		if not email:
 			return pb2.AirportListResponse(codes=[])
+		if not user_exists(email):
+			return pb2.AirportListResponse(codes=[])
 		codes = fetch_airports_for_email(email)
 		return pb2.AirportListResponse(codes=codes)
 
 	def RefreshFlights(self, request, context):
 		email = (request.email or '').strip()
+		if email and not user_exists(email):
+			return pb2.RefreshResponse(refreshed_count=0, message='user not found')
 		airports = fetch_airports_for_email(email) if email else fetch_all_airports()
 		if not airports:
 			return pb2.RefreshResponse(refreshed_count=0, message='no airports')
@@ -244,6 +272,8 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 	def ListFlights(self, request, context):
 		email = (request.email or '').strip()
 		airport_filter = (request.airport or '').strip().upper()
+		if email and not user_exists(email):
+			return pb2.FlightsResponse(flights=[])
 		airports = fetch_airports_for_email(email) if email else fetch_all_airports()
 		if airport_filter and airport_filter not in airports:
 			return pb2.FlightsResponse(flights=[])
@@ -264,15 +294,23 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		return pb2.FlightsResponse(flights=flights)
 
 	def AverageFlightsPerDay(self, request, context):
+		email = (getattr(request, 'email', '') or '').strip()
 		airport = (getattr(request, 'airport', '') or '').strip().upper()
 		days = getattr(request, 'days', 0) or 0
+		# Enforce user scoping at gRPC level
+		if not email or not user_exists(email):
+			return pb2.DaysResponse(average=0, average_departures=0, average_arrivals=0, airport=airport if airport else '', days=days if days>0 else 7)
 		if not airport:
 			return pb2.DaysResponse(average=0, average_departures=0, average_arrivals=0, airport='', days=days if days>0 else 7)
 		avg_total, avg_dep, avg_arr = compute_average_flights_for_airport(airport, days if days>0 else 7)
 		return pb2.DaysResponse(average=avg_total, average_departures=avg_dep, average_arrivals=avg_arr, airport=airport, days=days if days>0 else 7)
 
 	def LastFlights(self, request, context):
+		email = (getattr(request, 'email', '') or '').strip()
 		airport = (getattr(request, 'airport', '') or '').strip().upper()
+		# Enforce user scoping at gRPC level
+		if not email or not user_exists(email):
+			return pb2.LastFlightsResponse()
 		if not airport:
 			return pb2.LastFlightsResponse()
 		conn = get_data_conn(); cur = conn.cursor()
@@ -423,6 +461,10 @@ if __name__ == '__main__':
 	def api_list_airports():
 		data = request.get_json(silent=True) or {}
 		email = (data.get('email') or '').strip()
+		if not email:
+			return jsonify({'codes': []}), 400
+		if not user_exists(email):
+			return jsonify({'codes': []}), 404
 		svc = DataCollectorService()
 		res = svc.ListAirports(type('Req', (), {'email': email})(), None)
 		return jsonify({'codes': list(res.codes)})
@@ -438,10 +480,15 @@ if __name__ == '__main__':
 	@app.post('/api/average_flights_per_day')
 	def api_average_flights_per_day():
 		data = request.get_json(silent=True) or {}
+		email = (data.get('email') or '').strip()
+		if not email:
+			return jsonify({'error': 'email required or user not found'}), 400
+		if not user_exists(email):
+			return jsonify({'error': 'user not found'}), 404
 		airport = (data.get('airport') or '').strip().upper()
 		days = int(data.get('days') or 7)
 		svc = DataCollectorService()
-		res = svc.AverageFlightsPerDay(type('Req', (), {'airport': airport, 'days': days})(), None)
+		res = svc.AverageFlightsPerDay(type('Req', (), {'email': email, 'airport': airport, 'days': days})(), None)
 		# Ensure two-decimal formatting in JSON output
 		payload = {
 			'airport': res.airport,
@@ -455,9 +502,14 @@ if __name__ == '__main__':
 	@app.post('/api/last_flights')
 	def api_last_flights():
 		data = request.get_json(silent=True) or {}
+		email = (data.get('email') or '').strip()
+		if not email:
+			return jsonify({}), 400
+		if not user_exists(email):
+			return jsonify({}), 404
 		airport = (data.get('airport') or '').strip().upper()
 		svc = DataCollectorService()
-		res = svc.LastFlights(type('Req', (), {'airport': airport})(), None)
+		res = svc.LastFlights(type('Req', (), {'email': email, 'airport': airport})(), None)
 		def fmt(ts):
 			return datetime.utcfromtimestamp(ts).isoformat() if ts else None
 		resp = {}
@@ -491,6 +543,10 @@ if __name__ == '__main__':
 	def api_list_flights():
 		data = request.get_json(silent=True) or {}
 		email = (data.get('email') or '').strip()
+		if not email:
+			return jsonify({'flights': []}), 400
+		if not user_exists(email):
+			return jsonify({'flights': []}), 404
 		airport = (data.get('airport') or '').strip().upper()
 		svc = DataCollectorService()
 		res = svc.ListFlights(type('Req', (), {'email': email, 'airport': airport})(), None)
@@ -516,6 +572,12 @@ if __name__ == '__main__':
 	def api_debug_data_range():
 		"""Debug endpoint to check what data we actually have"""
 		from datetime import datetime
+		data = request.get_json(silent=True) or {}
+		email = (data.get('email') or '').strip()
+		if not email:
+			return jsonify({'error': 'email required or user not found'}), 400
+		if not user_exists(email):
+			return jsonify({'error': 'user not found'}), 404
 		
 		conn = get_data_conn()
 		cur = conn.cursor()

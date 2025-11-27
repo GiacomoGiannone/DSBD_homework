@@ -9,9 +9,9 @@ message FlightsRequest { string email = 1; string airport = 2; }
 message Flight { string icao24 = 1; string callsign = 2; string departure_airport = 3; string arrival_airport = 4; int64 departure_time = 5; int64 arrival_time = 6; string flight_type = 7; }
 message FlightsResponse { repeated Flight flights = 1; }
 message GenericResponse { int32 status = 1; string message = 2; }
-message DaysRequest { string airport = 1; int32 days = 2; }
+message DaysRequest { string email = 1; string airport = 2; int32 days = 3; }
 message DaysResponse { float average = 1; float average_departures = 2; float average_arrivals = 3; string airport = 4; int32 days = 5; }
-message LastFlightsRequest { string airport = 1; }
+message LastFlightsRequest { string email = 1; string airport = 2; }
 message LastFlightsResponse { Flight last_departure = 1; Flight last_arrival = 2; }
 
 service DataCollectorService {
