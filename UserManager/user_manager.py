@@ -13,7 +13,7 @@ import UserService_pb2 as pb2
 import UserService_pb2_grpc as pb2_grpc
 import hashlib
 
-
+#get the system variables from the docker-compose file
 DB_CONFIG = {
 	"host": os.getenv("DB_HOST", "localhost"),
 	"port": int(os.getenv("DB_PORT", "3306")),
@@ -21,14 +21,21 @@ DB_CONFIG = {
 	"user": os.getenv("DB_USER", "root"),
 	"password": os.getenv("DB_PASSWORD", "root"),
 }
-
+#try to find a GRPC_PORT system variable
+# if it doesn't exist then use the default value 
 GRPC_PORT = int(os.getenv("GRPC_PORT", "50051"))
 HTTP_PORT = int(os.getenv("HTTP_PORT", "8081"))
 
-
+#unpack the dictionary, currently DB_CONFIG is
+# "host" : "userdb", it then becomes
+# host = userdb
+# the connect module expects arg1 = ..., arg2 = ...
+# which is why we need to unpack
 def get_connection():
 	return mysql.connector.connect(**DB_CONFIG)
 
+#this function is to be used when the operation has gone well and 
+#we have done the commit
 def close_connection(conn, cur):
 	try:
 		cur.close()
@@ -39,6 +46,8 @@ def close_connection(conn, cur):
 	except Exception as e:
 		logging.warning("Failed to close connection: %s", e)
 
+#the rollback variation resets the DB state before ending
+#the operation, has to be used it the operation was a failure
 def close_connection_with_rollback(conn, cur):
 	try:
 		conn.rollback()
@@ -69,7 +78,9 @@ def verify_password(plain: str, stored_hash: str) -> bool:
 		return bcrypt.checkpw(plain.encode("utf-8"), stored_hash.encode("utf-8"))
 	except Exception:
 		return False
-	
+
+#unpack the attributes from the request defined in the UserService.proto file
+# the .strip guarantees that the attributes will not have spaces	
 def get_request_attributes(request):
 	username = (getattr(request, "username", "") or "").strip()
 	password = getattr(request, "password", "") or ""
@@ -77,6 +88,9 @@ def get_request_attributes(request):
 	operation = (getattr(request, "operation", "") or "").strip()
 	return username, password, email, operation
 
+#compute the hash of email, username, operation and timestamp to implement
+#the at most once operation. We use the operation to guarantee that user creation
+#and user deletion will be different
 def compute_request_id(email: str, username: str, operation: str, ts_iso: str) -> str:
     raw = f"{email}|{username}|{operation}|{ts_iso}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -107,9 +121,13 @@ class UserService(pb2_grpc.UserServiceServicer):
 				if error_no in (1062,):  # MySQL duplicate key
 					# Fetch and return the original message
 					try:
+						#search for a record with the same request_id
 						cur.execute("SELECT message, status_code FROM request_log WHERE request_id=%s", (request_id,))
+						# returns a single record or None if no more rows are available.
 						row = cur.fetchone()
+						#if it exists it is saved in row[0], the first message
 						msg = row[0] if row and row[0] else "Request already processed"
+						#row[1] contains the status of the operation
 						status = row[1] if row and row[1] is not None else (200 if msg == "user created" else 401)
 					except Exception:
 						msg = "Request already processed"; status = 401
@@ -129,6 +147,7 @@ class UserService(pb2_grpc.UserServiceServicer):
 				close_connection_with_rollback(conn, cur)
 				return pb2.userResponse(status=409, message="user already exists")
 			cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
+			#check uniqueness of username
 			if cur.fetchone() is not None:
 				try:
 					cur.execute("UPDATE request_log SET message=%s, status_code=%s WHERE request_id=%s", ("username already exists", 409, request_id))
@@ -136,7 +155,8 @@ class UserService(pb2_grpc.UserServiceServicer):
 					pass
 				close_connection_with_rollback(conn, cur)
 				return pb2.userResponse(status=409, message="username already exists")
-
+			#if the mail was unique and the username was unique 
+			#finally register the user
 			cur.execute(
 				"""
 				INSERT INTO users (email, username, password)
@@ -279,7 +299,8 @@ app = Flask(__name__)
 # Disable static file caching for dev so updated HTML is always served
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
-
+#request is a globla variable managed by Flask 
+#it gets filled with the data everytime a HTTP request is received
 def _get_request_data():
 	"""Extract and sanitize JSON request data."""
 	return request.get_json(silent=True) or {}
@@ -302,7 +323,10 @@ def http_add():
 @app.post("/delete")
 def http_delete():
 	data = _get_request_data()
+	#frontend sends an identity field
 	identity = (data.get("identity") or "").strip()
+	#the @ control allows us to determine whether the user is trying
+	#to log with the email or the username 
 	email = identity if "@" in identity else ""
 	username = identity if "@" not in identity else ""
 	req = types.SimpleNamespace(
@@ -352,7 +376,11 @@ def serve_http():
 	app.run(host="0.0.0.0", port=HTTP_PORT)
 
 
-# Serve the local HTML tester to avoid CORS issues
+# Serve the local HTML tester to avoid CORS issues:
+# This endpoint serves the `user_test.html` file directly from the backend.
+# By serving the frontend from the same origin (same host and port) as the API,
+# we avoid CORS (Cross-Origin Resource Sharing) problems that would occur if
+# the frontend were served from a different domain or port
 @app.get("/")
 def serve_test_page():
 	resp = send_from_directory(os.path.dirname(__file__), "user_test.html")
@@ -367,6 +395,7 @@ def serve_test_page():
 
 
 # Lightweight existence check for other services
+# will be useful for the data collector
 @app.get("/exists")
 def http_exists():
 	identity = (request.args.get("email") or "").strip()
