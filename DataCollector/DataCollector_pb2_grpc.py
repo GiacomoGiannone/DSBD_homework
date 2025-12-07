@@ -62,7 +62,17 @@ class DataCollectorServiceStub(object):
         self.AverageFlightsPerDay = channel.unary_unary(
                 '/DataCollectorService/AverageFlightsPerDay',
                 request_serializer=DataCollector__pb2.DaysRequest.SerializeToString,
-                response_deserializer=DataCollector__pb2.DaysRespone.FromString,
+                response_deserializer=DataCollector__pb2.DaysResponse.FromString,
+                _registered_method=True)
+        self.LastFlights = channel.unary_unary(
+                '/DataCollectorService/LastFlights',
+                request_serializer=DataCollector__pb2.LastFlightsRequest.SerializeToString,
+                response_deserializer=DataCollector__pb2.LastFlightsResponse.FromString,
+                _registered_method=True)
+        self.UpdateAirportThresholds = channel.unary_unary(
+                '/DataCollectorService/UpdateAirportThresholds',
+                request_serializer=DataCollector__pb2.AirportThresholdsRequest.SerializeToString,
+                response_deserializer=DataCollector__pb2.AirportThresholdsResponse.FromString,
                 _registered_method=True)
 
 
@@ -105,6 +115,18 @@ class DataCollectorServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def LastFlights(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateAirportThresholds(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DataCollectorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -136,7 +158,17 @@ def add_DataCollectorServiceServicer_to_server(servicer, server):
             'AverageFlightsPerDay': grpc.unary_unary_rpc_method_handler(
                     servicer.AverageFlightsPerDay,
                     request_deserializer=DataCollector__pb2.DaysRequest.FromString,
-                    response_serializer=DataCollector__pb2.DaysRespone.SerializeToString,
+                    response_serializer=DataCollector__pb2.DaysResponse.SerializeToString,
+            ),
+            'LastFlights': grpc.unary_unary_rpc_method_handler(
+                    servicer.LastFlights,
+                    request_deserializer=DataCollector__pb2.LastFlightsRequest.FromString,
+                    response_serializer=DataCollector__pb2.LastFlightsResponse.SerializeToString,
+            ),
+            'UpdateAirportThresholds': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAirportThresholds,
+                    request_deserializer=DataCollector__pb2.AirportThresholdsRequest.FromString,
+                    response_serializer=DataCollector__pb2.AirportThresholdsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -300,7 +332,61 @@ class DataCollectorService(object):
             target,
             '/DataCollectorService/AverageFlightsPerDay',
             DataCollector__pb2.DaysRequest.SerializeToString,
-            DataCollector__pb2.DaysRespone.FromString,
+            DataCollector__pb2.DaysResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LastFlights(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/DataCollectorService/LastFlights',
+            DataCollector__pb2.LastFlightsRequest.SerializeToString,
+            DataCollector__pb2.LastFlightsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateAirportThresholds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/DataCollectorService/UpdateAirportThresholds',
+            DataCollector__pb2.AirportThresholdsRequest.SerializeToString,
+            DataCollector__pb2.AirportThresholdsResponse.FromString,
             options,
             channel_credentials,
             insecure,

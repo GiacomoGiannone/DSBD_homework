@@ -11,6 +11,8 @@ from flask_cors import CORS
 from datetime import datetime, timedelta
 import csv
 from io import StringIO
+import json
+from kafka import KafkaProducer
 
 import DataCollector_pb2 as pb2
 import DataCollector_pb2_grpc as pb2_grpc
@@ -35,7 +37,32 @@ AIRPORTS_SOURCE_URL = os.getenv("AIRPORTS_SOURCE_URL", "https://raw.githubuserco
 REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "43200"))  # 12 hours default
 GRPC_PORT = int(os.getenv("DATACOLLECTOR_GRPC_PORT", "50052"))
 
+# Kafka configuration
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:29092")
+KAFKA_TOPIC_TO_ALERT = os.getenv("KAFKA_TOPIC_TO_ALERT", "to-alert-system")
+KAFKA_TOPIC_TO_NOTIFIER = os.getenv("KAFKA_TOPIC_TO_NOTIFIER", "to-notifier")
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+# Initialize Kafka producer
+def init_kafka_producer():
+	try:
+		logging.info(f"[KAFKA DEBUG] Attempting to initialize KafkaProducer with broker: {KAFKA_BROKER}")
+		producer = KafkaProducer(
+			bootstrap_servers=[KAFKA_BROKER],
+			value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+			retries=3,
+			retry_backoff_ms=100,
+			acks='all',
+			request_timeout_ms=10000
+		)
+		logging.info(f"[KAFKA DEBUG] KafkaProducer initialized successfully: {type(producer).__name__}")
+		return producer
+	except Exception as e:
+		logging.error(f"[KAFKA DEBUG] Failed to initialize Kafka producer: {type(e).__name__}: {e}")
+		return None
+
+kafka_producer = init_kafka_producer()
 
 def get_data_conn():
 	return mysql.connector.connect(**DATA_DB)
@@ -164,6 +191,8 @@ def refresh_flights(airports):
 	begin = int(time.time()) - 12*3600 #past 7 days
 	end = int(time.time())
 	count = 0
+	flight_counts = {}  # Track counts per airport for Kafka
+	
 	conn = get_data_conn()
 	cur = conn.cursor()
 	for code in airports:
@@ -171,6 +200,10 @@ def refresh_flights(airports):
 		arr_url = "https://opensky-network.org/api/flights/arrival"
 		departures = opensky_get(dep_url, {"airport": code, "begin": begin, "end": end}) or []
 		arrivals = opensky_get(arr_url, {"airport": code, "begin": begin, "end": end}) or []
+		
+		dep_count = 0
+		arr_count = 0
+		
 		for d in departures:
 			try:
 				cur.execute(
@@ -182,6 +215,7 @@ def refresh_flights(airports):
 					(d.get('icao24'), d.get('callsign'), code, d.get('estArrivalAirport'), d.get('firstSeen'), d.get('lastSeen'))
 				)
 				count += 1
+				dep_count += 1
 			except Exception as e:
 				logging.debug("Skip departure %s: %s", d, e)
 		for a in arrivals:
@@ -195,9 +229,63 @@ def refresh_flights(airports):
 					(a.get('icao24'), a.get('callsign'), a.get('estDepartureAirport'), code, a.get('firstSeen'), a.get('lastSeen'))
 				)
 				count += 1
+				arr_count += 1
 			except Exception as e:
 				logging.debug("Skip arrival %s: %s", a, e)
+		
+		flight_counts[code] = {"departures": dep_count, "arrivals": arr_count}
+	
 	commit_and_close(conn, cur)
+	
+	# Publish to Kafka with flight data for all users interested in these airports
+	logging.info(f"[KAFKA DEBUG] kafka_producer is {'OK' if kafka_producer else 'NULL'}, flight_counts keys: {list(flight_counts.keys())}")
+	
+	if kafka_producer and flight_counts:
+		try:
+			logging.info(f"[KAFKA DEBUG] Starting Kafka publish for {len(flight_counts)} airports")
+			# Get all users interested in these airports
+			conn = get_data_conn()
+			cur = conn.cursor()
+			placeholders = ','.join(['%s']*len(airports))
+			cur.execute(
+				f"SELECT DISTINCT email FROM interests WHERE airport_code IN ({placeholders})",
+				airports
+			)
+			users = [row[0] for row in cur.fetchall()]
+			close_connection(conn, cur)
+			logging.info(f"[KAFKA DEBUG] Found {len(users)} users interested in airports")
+			
+			# Create Kafka message for each user with their interested airports
+			for user_email in users:
+				user_airports = fetch_airports_for_email(user_email)
+				flights_data = [
+					{
+						"airport": ap,
+						"departure_count": flight_counts.get(ap, {}).get("departures", 0),
+						"arrival_count": flight_counts.get(ap, {}).get("arrivals", 0),
+						"timestamp": int(time.time())
+					}
+					for ap in user_airports if ap in flight_counts
+				]
+				
+				if flights_data:
+					message = {
+						"email": user_email,
+						"flights_data": flights_data
+					}
+					logging.info(f"[KAFKA DEBUG] Sending message for {user_email}: {message}")
+					kafka_producer.send(KAFKA_TOPIC_TO_ALERT, value=message)
+					logging.info(f"[KAFKA DEBUG] Published alert for {user_email}: {len(flights_data)} airports")
+				else:
+					logging.debug(f"[KAFKA DEBUG] No flights_data for {user_email}")
+		except Exception as e:
+			logging.error(f"[KAFKA DEBUG] Failed to publish to Kafka: {type(e).__name__}: {e}")
+	else:
+		if not kafka_producer:
+			logging.warning("[KAFKA DEBUG] kafka_producer is None - Kafka not available")
+		if not flight_counts:
+			logging.info("[KAFKA DEBUG] No flight_counts to publish")
+	
 	return count
 
 
@@ -205,10 +293,16 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 	def AddAirport(self, request, context):
 		email = (request.email or '').strip()
 		code = (request.code or '').strip().upper()
+		high_value = getattr(request, 'high_value', 0) or None
+		low_value = getattr(request, 'low_value', 0) or None
+		
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
 		if not user_exists(email):
 			return pb2.GenericResponse(status=404, message='user not found')
+		if high_value is not None and low_value is not None and high_value <= low_value:
+			return pb2.GenericResponse(status=400, message='high_value must be > low_value')
+		
 		try:
 			conn = get_data_conn()
 			cur = conn.cursor()
@@ -216,7 +310,10 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 			if cur.fetchone():
 				close_connection(conn, cur)
 				return pb2.GenericResponse(status=409, message='already exists')
-			cur.execute("INSERT INTO interests (email, airport_code) VALUES (%s,%s)", (email, code))
+			cur.execute(
+				"INSERT INTO interests (email, airport_code, high_value, low_value) VALUES (%s,%s,%s,%s)",
+				(email, code, high_value, low_value)
+			)
 			commit_and_close(conn, cur)
 			# Immediate refresh for this airport to populate flights
 			try:
@@ -336,6 +433,39 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		last_dep = pb2.Flight(icao24=dep_row[0], callsign=dep_row[1] or '', departure_airport=dep_row[2] or '', arrival_airport=dep_row[3] or '', departure_time=dep_row[4] or 0, arrival_time=dep_row[5] or 0, flight_type=dep_row[6] or '') if dep_row else None
 		last_arr = pb2.Flight(icao24=arr_row[0], callsign=arr_row[1] or '', departure_airport=arr_row[2] or '', arrival_airport=arr_row[3] or '', departure_time=arr_row[4] or 0, arrival_time=arr_row[5] or 0, flight_type=arr_row[6] or '') if arr_row else None
 		return pb2.LastFlightsResponse(last_departure=last_dep, last_arrival=last_arr)
+
+	def UpdateAirportThresholds(self, request, context):
+		email = (request.email or '').strip()
+		code = (request.code or '').strip().upper()
+		high_value = getattr(request, 'high_value', 0) or None
+		low_value = getattr(request, 'low_value', 0) or None
+		
+		if not email or not code:
+			return pb2.AirportThresholdsResponse(status=400, message='email and code required', email=email, airport=code)
+		if not user_exists(email):
+			return pb2.AirportThresholdsResponse(status=404, message='user not found', email=email, airport=code)
+		if high_value is not None and low_value is not None and high_value <= low_value:
+			return pb2.AirportThresholdsResponse(status=400, message='high_value must be > low_value', email=email, airport=code)
+		
+		try:
+			conn = get_data_conn()
+			cur = conn.cursor()
+			# Check if exists
+			cur.execute("SELECT 1 FROM interests WHERE email=%s AND airport_code=%s", (email, code))
+			if not cur.fetchone():
+				close_connection(conn, cur)
+				return pb2.AirportThresholdsResponse(status=404, message='airport interest not found', email=email, airport=code)
+			
+			# Update thresholds
+			cur.execute(
+				"UPDATE interests SET high_value=%s, low_value=%s WHERE email=%s AND airport_code=%s",
+				(high_value, low_value, email, code)
+			)
+			commit_and_close(conn, cur)
+			return pb2.AirportThresholdsResponse(status=200, message='updated', email=email, airport=code, high_value=high_value or 0, low_value=low_value or 0)
+		except Exception as e:
+			logging.exception("UpdateAirportThresholds failed")
+			return pb2.AirportThresholdsResponse(status=500, message=str(e), email=email, airport=code)
 
 def periodic_loop():
 	while True:

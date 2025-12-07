@@ -58,6 +58,38 @@ services:
       - user_db_net
 
   # -------------------------------------------------------
+  # MESSAGE BROKER (KAFKA + ZOOKEEPER)
+  # -------------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - app_net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # Reliability configuration
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    networks:
+      - app_net
+
+  # -------------------------------------------------------
   # DATA COLLECTOR MICROSERVICE (app_net + data_db_net)
   # -------------------------------------------------------
   data-collector:
@@ -73,6 +105,10 @@ services:
       DB_USER: root
       DB_PASSWORD: root
 
+      KAFKA_BROKER: kafka:29092
+      KAFKA_TOPIC_TO_ALERT: to-alert-system
+      KAFKA_TOPIC_TO_NOTIFIER: to-notifier
+
       # OpenSky OAuth credentials (read from DataCollector/credentials.json)
       # OPENSKY_USER: "your_username"
       # OPENSKY_PASS: "your_password"
@@ -83,6 +119,7 @@ services:
     depends_on:
       - datadb
       - user-manager
+      - kafka
     networks:
       - app_net
       - data_db_net

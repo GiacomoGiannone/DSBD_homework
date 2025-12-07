@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS interests
 (
     email VARCHAR(255) NOT NULL,
     airport_code VARCHAR(10) NOT NULL,
+    high_value INT DEFAULT NULL,
+    low_value INT DEFAULT NULL,
     PRIMARY KEY (email, airport_code),
-    KEY idx_interest_airport (airport_code)
+    KEY idx_interest_airport (airport_code),
+    CONSTRAINT check_threshold_order CHECK (high_value IS NULL OR low_value IS NULL OR high_value > low_value)
 );

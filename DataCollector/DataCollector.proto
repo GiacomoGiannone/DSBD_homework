@@ -13,6 +13,13 @@ message DaysRequest { string email = 1; string airport = 2; int32 days = 3; }
 message DaysResponse { float average = 1; float average_departures = 2; float average_arrivals = 3; string airport = 4; int32 days = 5; }
 message LastFlightsRequest { string email = 1; string airport = 2; }
 message LastFlightsResponse { Flight last_departure = 1; Flight last_arrival = 2; }
+message AirportThresholdsRequest { string email = 1; string code = 2; int32 high_value = 3; int32 low_value = 4; }
+message AirportThresholdsResponse { int32 status = 1; string message = 2; string email = 3; string airport = 4; int32 high_value = 5; int32 low_value = 6; }
+
+/* Kafka event messages */
+message FlightCountData { string airport = 1; int32 departure_count = 2; int32 arrival_count = 3; int64 timestamp = 4; }
+message AlertSystemEvent { string email = 1; repeated FlightCountData flights_data = 2; }
+message NotificationEvent { string email = 1; string airport = 2; string condition = 3; int32 flight_count = 4; string threshold_type = 5; }
 
 service DataCollectorService {
 	rpc AddAirport(AirportRequest) returns (GenericResponse);
@@ -22,4 +29,5 @@ service DataCollectorService {
 	rpc ListFlights(FlightsRequest) returns (FlightsResponse);
 	rpc AverageFlightsPerDay(DaysRequest) returns (DaysResponse);
 	rpc LastFlights(LastFlightsRequest) returns (LastFlightsResponse);
+	rpc UpdateAirportThresholds(AirportThresholdsRequest) returns (AirportThresholdsResponse);
 }

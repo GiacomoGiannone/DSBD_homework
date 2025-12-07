@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13\x44\x61taCollector.proto\"-\n\x0e\x41irportRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x0c\n\x04\x63ode\x18\x02 \x01(\t\"#\n\x12\x41irportListRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\"$\n\x13\x41irportListResponse\x12\r\n\x05\x63odes\x18\x01 \x03(\t\"\x1f\n\x0eRefreshRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\";\n\x0fRefreshResponse\x12\x17\n\x0frefreshed_count\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\"0\n\x0e\x46lightsRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x0f\n\x07\x61irport\x18\x02 \x01(\t\"\xa1\x01\n\x06\x46light\x12\x0e\n\x06icao24\x18\x01 \x01(\t\x12\x10\n\x08\x63\x61llsign\x18\x02 \x01(\t\x12\x19\n\x11\x64\x65parture_airport\x18\x03 \x01(\t\x12\x17\n\x0f\x61rrival_airport\x18\x04 \x01(\t\x12\x16\n\x0e\x64\x65parture_time\x18\x05 \x01(\x03\x12\x14\n\x0c\x61rrival_time\x18\x06 \x01(\x03\x12\x13\n\x0b\x66light_type\x18\x07 \x01(\t\"+\n\x0f\x46lightsResponse\x12\x18\n\x07\x66lights\x18\x01 \x03(\x0b\x32\x07.Flight\"2\n\x0fGenericResponse\x12\x0e\n\x06status\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x1b\n\x0b\x44\x61ysRequest\x12\x0c\n\x04\x64\x61ys\x18\x01 \x01(\x05\"\x1e\n\x0b\x44\x61ysRespone\x12\x0f\n\x07\x61verage\x18\x01 \x01(\x02\x32\xd1\x02\n\x14\x44\x61taCollectorService\x12/\n\nAddAirport\x12\x0f.AirportRequest\x1a\x10.GenericResponse\x12\x32\n\rRemoveAirport\x12\x0f.AirportRequest\x1a\x10.GenericResponse\x12\x39\n\x0cListAirports\x12\x13.AirportListRequest\x1a\x14.AirportListResponse\x12\x33\n\x0eRefreshFlights\x12\x0f.RefreshRequest\x1a\x10.RefreshResponse\x12\x30\n\x0bListFlights\x12\x0f.FlightsRequest\x1a\x10.FlightsResponse\x12\x32\n\x14\x41verageFlightsPerDay\x12\x0c.DaysRequest\x1a\x0c.DaysResponeb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13\x44\x61taCollector.proto\"-\n\x0e\x41irportRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x0c\n\x04\x63ode\x18\x02 \x01(\t\"#\n\x12\x41irportListRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\"$\n\x13\x41irportListResponse\x12\r\n\x05\x63odes\x18\x01 \x03(\t\"\x1f\n\x0eRefreshRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\";\n\x0fRefreshResponse\x12\x17\n\x0frefreshed_count\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\"0\n\x0e\x46lightsRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x0f\n\x07\x61irport\x18\x02 \x01(\t\"\xa1\x01\n\x06\x46light\x12\x0e\n\x06icao24\x18\x01 \x01(\t\x12\x10\n\x08\x63\x61llsign\x18\x02 \x01(\t\x12\x19\n\x11\x64\x65parture_airport\x18\x03 \x01(\t\x12\x17\n\x0f\x61rrival_airport\x18\x04 \x01(\t\x12\x16\n\x0e\x64\x65parture_time\x18\x05 \x01(\x03\x12\x14\n\x0c\x61rrival_time\x18\x06 \x01(\x03\x12\x13\n\x0b\x66light_type\x18\x07 \x01(\t\"+\n\x0f\x46lightsResponse\x12\x18\n\x07\x66lights\x18\x01 \x03(\x0b\x32\x07.Flight\"2\n\x0fGenericResponse\x12\x0e\n\x06status\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\";\n\x0b\x44\x61ysRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x0f\n\x07\x61irport\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ys\x18\x03 \x01(\x05\"t\n\x0c\x44\x61ysResponse\x12\x0f\n\x07\x61verage\x18\x01 \x01(\x02\x12\x1a\n\x12\x61verage_departures\x18\x02 \x01(\x02\x12\x18\n\x10\x61verage_arrivals\x18\x03 \x01(\x02\x12\x0f\n\x07\x61irport\x18\x04 \x01(\t\x12\x0c\n\x04\x64\x61ys\x18\x05 \x01(\x05\"4\n\x12LastFlightsRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x0f\n\x07\x61irport\x18\x02 \x01(\t\"U\n\x13LastFlightsResponse\x12\x1f\n\x0elast_departure\x18\x01 \x01(\x0b\x32\x07.Flight\x12\x1d\n\x0clast_arrival\x18\x02 \x01(\x0b\x32\x07.Flight\"^\n\x18\x41irportThresholdsRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x0c\n\x04\x63ode\x18\x02 \x01(\t\x12\x12\n\nhigh_value\x18\x03 \x01(\x05\x12\x11\n\tlow_value\x18\x04 \x01(\x05\"\x83\x01\n\x19\x41irportThresholdsResponse\x12\x0e\n\x06status\x18\x01 \x01(\x05\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\x12\x0f\n\x07\x61irport\x18\x04 \x01(\t\x12\x12\n\nhigh_value\x18\x05 \x01(\x05\x12\x11\n\tlow_value\x18\x06 \x01(\x05\"e\n\x0f\x46lightCountData\x12\x0f\n\x07\x61irport\x18\x01 \x01(\t\x12\x17\n\x0f\x64\x65parture_count\x18\x02 \x01(\x05\x12\x15\n\rarrival_count\x18\x03 \x01(\x05\x12\x11\n\ttimestamp\x18\x04 \x01(\x03\"I\n\x10\x41lertSystemEvent\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12&\n\x0c\x66lights_data\x18\x02 \x03(\x0b\x32\x10.FlightCountData\"t\n\x11NotificationEvent\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x0f\n\x07\x61irport\x18\x02 \x01(\t\x12\x11\n\tcondition\x18\x03 \x01(\t\x12\x14\n\x0c\x66light_count\x18\x04 \x01(\x05\x12\x16\n\x0ethreshold_type\x18\x05 \x01(\t2\xde\x03\n\x14\x44\x61taCollectorService\x12/\n\nAddAirport\x12\x0f.AirportRequest\x1a\x10.GenericResponse\x12\x32\n\rRemoveAirport\x12\x0f.AirportRequest\x1a\x10.GenericResponse\x12\x39\n\x0cListAirports\x12\x13.AirportListRequest\x1a\x14.AirportListResponse\x12\x33\n\x0eRefreshFlights\x12\x0f.RefreshRequest\x1a\x10.RefreshResponse\x12\x30\n\x0bListFlights\x12\x0f.FlightsRequest\x1a\x10.FlightsResponse\x12\x33\n\x14\x41verageFlightsPerDay\x12\x0c.DaysRequest\x1a\r.DaysResponse\x12\x38\n\x0bLastFlights\x12\x13.LastFlightsRequest\x1a\x14.LastFlightsResponse\x12P\n\x17UpdateAirportThresholds\x12\x19.AirportThresholdsRequest\x1a\x1a.AirportThresholdsResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -50,9 +50,23 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_GENERICRESPONSE']._serialized_start=498
   _globals['_GENERICRESPONSE']._serialized_end=548
   _globals['_DAYSREQUEST']._serialized_start=550
-  _globals['_DAYSREQUEST']._serialized_end=577
-  _globals['_DAYSRESPONE']._serialized_start=579
-  _globals['_DAYSRESPONE']._serialized_end=609
-  _globals['_DATACOLLECTORSERVICE']._serialized_start=612
-  _globals['_DATACOLLECTORSERVICE']._serialized_end=949
+  _globals['_DAYSREQUEST']._serialized_end=609
+  _globals['_DAYSRESPONSE']._serialized_start=611
+  _globals['_DAYSRESPONSE']._serialized_end=727
+  _globals['_LASTFLIGHTSREQUEST']._serialized_start=729
+  _globals['_LASTFLIGHTSREQUEST']._serialized_end=781
+  _globals['_LASTFLIGHTSRESPONSE']._serialized_start=783
+  _globals['_LASTFLIGHTSRESPONSE']._serialized_end=868
+  _globals['_AIRPORTTHRESHOLDSREQUEST']._serialized_start=870
+  _globals['_AIRPORTTHRESHOLDSREQUEST']._serialized_end=964
+  _globals['_AIRPORTTHRESHOLDSRESPONSE']._serialized_start=967
+  _globals['_AIRPORTTHRESHOLDSRESPONSE']._serialized_end=1098
+  _globals['_FLIGHTCOUNTDATA']._serialized_start=1100
+  _globals['_FLIGHTCOUNTDATA']._serialized_end=1201
+  _globals['_ALERTSYSTEMEVENT']._serialized_start=1203
+  _globals['_ALERTSYSTEMEVENT']._serialized_end=1276
+  _globals['_NOTIFICATIONEVENT']._serialized_start=1278
+  _globals['_NOTIFICATIONEVENT']._serialized_end=1394
+  _globals['_DATACOLLECTORSERVICE']._serialized_start=1397
+  _globals['_DATACOLLECTORSERVICE']._serialized_end=1875
 # @@protoc_insertion_point(module_scope)
