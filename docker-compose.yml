@@ -127,6 +127,30 @@ services:
       - app_net
       - data_db_net
 
+  # -------------------------------------------------------
+  # ALERT SYSTEM (consumer -> to-alert-system, producer -> to-notifier)
+  # -------------------------------------------------------
+  alert-system:
+    build: ./AlertSystem
+    container_name: alert-system
+    environment:
+      KAFKA_BROKER: kafka:29092
+      KAFKA_TOPIC_IN: to-alert-system
+      KAFKA_TOPIC_OUT: to-notifier
+      KAFKA_GROUP_ID: alert-system-group
+
+      DATA_DB_HOST: datadb
+      DATA_DB_PORT: 3306
+      DATA_DB_NAME: datadb
+      DATA_DB_USER: root
+      DATA_DB_PASSWORD: root
+    depends_on:
+      - kafka
+      - datadb
+    networks:
+      - app_net
+      - data_db_net
+
 # -------------------------------------------------------
 # VOLUMI PERSISTENTI
 # -------------------------------------------------------
