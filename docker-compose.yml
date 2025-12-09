@@ -151,6 +151,30 @@ services:
       - app_net
       - data_db_net
 
+  # -------------------------------------------------------
+  # ALERT NOTIFIER SYSTEM (consumer -> to-notifier, sends email)
+  # -------------------------------------------------------
+  alert-notifier:
+    build: ./AlertNotifierSystem
+    container_name: alert-notifier
+    environment:
+      KAFKA_BROKER: kafka:29092
+      KAFKA_TOPIC_IN: to-notifier
+      KAFKA_GROUP_ID: alert-notifier-group
+      # Email settings
+      # Set DISABLE_EMAIL to "false" to enable real SMTP sending.
+      # If SMTP_HOST is empty, service will safely fallback to mock send.
+      DISABLE_EMAIL: "false"
+      SMTP_HOST: "smtp.gmail.com"
+      SMTP_PORT: 587
+      SMTP_USER: "superfily02@gmail.com"
+      SMTP_PASS: "rlzb esey jehc edpj"
+      SMTP_FROM: "superfily02@gmail.com"
+    depends_on:
+      - kafka
+    networks:
+      - app_net
+
 # -------------------------------------------------------
 # VOLUMI PERSISTENTI
 # -------------------------------------------------------

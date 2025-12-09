@@ -91,6 +91,8 @@ def main():
                             'email': email,
                             'airport': airport,
                             'condition': cond,
+                            'departure_count': dep,
+                            'arrival_count': arr,
                             'timestamp': ts,
                         }
                         producer.produce(
