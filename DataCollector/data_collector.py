@@ -110,15 +110,36 @@ def fetch_all_airports():
 	close_connection(conn, cur)
 	return rows
 
-def user_exists(email: str) -> bool:
-	email = (email or '').strip()
-	if not email:
+def resolve_canonical_email(identity: str) -> str:
+	identity = (identity or '').strip()
+	if not identity:
+		return ''
+	if '@' in identity:
+		return identity
+	try:
+		url = f"http://{USER_MANAGER_HOST}:{USER_MANAGER_HTTP_PORT}/resolve"
+		r = requests.post(url, json={"identity": identity}, timeout=5)
+		if r.status_code != 200:
+			logging.warning("UserManager /resolve returned %s for %s", r.status_code, identity)
+			return ''
+		body = r.json()
+		return (body.get('email') or '').strip()
+	except Exception as e:
+		logging.warning("UserManager /resolve call failed: %s", e)
+		return ''
+
+def user_exists(email_or_username: str) -> bool:
+	identity = (email_or_username or '').strip()
+	if not identity:
+		return False
+	canon = resolve_canonical_email(identity)
+	if not canon:
 		return False
 	try:
 		url = f"http://{USER_MANAGER_HOST}:{USER_MANAGER_HTTP_PORT}/exists"
-		r = requests.get(url, params={"email": email}, timeout=5)
+		r = requests.get(url, params={"email": canon}, timeout=5)
 		if r.status_code != 200:
-			logging.warning("UserManager /exists returned %s for %s", r.status_code, email)
+			logging.warning("UserManager /exists returned %s for %s", r.status_code, canon)
 			return False
 		body = r.json()
 		return bool(body.get("exists"))
@@ -267,7 +288,7 @@ def refresh_flights(airports):
 					callback=_delivery_report
 				)
 				kafka_producer.poll(0)
-				logging.info("[KAFKA DEBUG] Published airport update %s: dep=%s arr=%s", ap, value["departure_count"], value["arrival_count"])
+				logging.info("[KAFKA DEBUG] Published airport update %s: dep_count=%s arr_count=%s", ap, value["departure_count"], value["arrival_count"])
 			remaining = kafka_producer.flush(timeout=10)
 			if remaining:
 				logging.warning("[KAFKA DEBUG] %d Kafka messages not delivered within timeout", remaining)
@@ -291,7 +312,8 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
-		if not user_exists(email):
+		canon_email = resolve_canonical_email(email)
+		if not canon_email or not user_exists(canon_email):
 			return pb2.GenericResponse(status=404, message='user not found')
 		if high_value is not None and low_value is not None and high_value <= low_value:
 			return pb2.GenericResponse(status=400, message='high_value must be > low_value')
@@ -299,13 +321,13 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		try:
 			conn = get_data_conn()
 			cur = conn.cursor()
-			cur.execute("SELECT 1 FROM interests WHERE email=%s AND airport_code=%s", (email, code))
+			cur.execute("SELECT 1 FROM interests WHERE email=%s AND airport_code=%s", (canon_email, code))
 			if cur.fetchone():
 				close_connection(conn, cur)
 				return pb2.GenericResponse(status=409, message='already exists')
 			cur.execute(
 				"INSERT INTO interests (email, airport_code, high_value, low_value) VALUES (%s,%s,%s,%s)",
-				(email, code, high_value, low_value)
+				(canon_email, code, high_value, low_value)
 			)
 			commit_and_close(conn, cur)
 			# Immediate refresh for this airport to populate flights
@@ -324,12 +346,13 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		code = (request.code or '').strip().upper()
 		if not email or not code:
 			return pb2.GenericResponse(status=400, message='email and code required')
-		if not user_exists(email):
+		canon_email = resolve_canonical_email(email)
+		if not canon_email or not user_exists(canon_email):
 			return pb2.GenericResponse(status=404, message='user not found')
 		try:
 			conn = get_data_conn()
 			cur = conn.cursor()
-			cur.execute("DELETE FROM interests WHERE email=%s AND airport_code=%s", (email, code))
+			cur.execute("DELETE FROM interests WHERE email=%s AND airport_code=%s", (canon_email, code))
 			affected = cur.rowcount
 			commit_and_close(conn, cur)
 			# Optional: purge flights for this airport if no other user is interested
@@ -344,16 +367,18 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		email = (request.email or '').strip()
 		if not email:
 			return pb2.AirportListResponse(codes=[])
-		if not user_exists(email):
+		canon_email = resolve_canonical_email(email)
+		if not canon_email or not user_exists(canon_email):
 			return pb2.AirportListResponse(codes=[])
-		codes = fetch_airports_for_email(email)
+		codes = fetch_airports_for_email(canon_email)
 		return pb2.AirportListResponse(codes=codes)
 
 	def RefreshFlights(self, request, context):
 		email = (request.email or '').strip()
-		if email and not user_exists(email):
+		canon_email = resolve_canonical_email(email) if email else ''
+		if email and (not canon_email or not user_exists(canon_email)):
 			return pb2.RefreshResponse(refreshed_count=0, message='user not found')
-		airports = fetch_airports_for_email(email) if email else fetch_all_airports()
+		airports = fetch_airports_for_email(canon_email) if canon_email else fetch_all_airports()
 		if not airports:
 			return pb2.RefreshResponse(refreshed_count=0, message='no airports')
 		count = refresh_flights(airports)
@@ -362,9 +387,10 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 	def ListFlights(self, request, context):
 		email = (request.email or '').strip()
 		airport_filter = (request.airport or '').strip().upper()
-		if email and not user_exists(email):
+		canon_email = resolve_canonical_email(email) if email else ''
+		if email and (not canon_email or not user_exists(canon_email)):
 			return pb2.FlightsResponse(flights=[])
-		airports = fetch_airports_for_email(email) if email else fetch_all_airports()
+		airports = fetch_airports_for_email(canon_email) if canon_email else fetch_all_airports()
 		if airport_filter and airport_filter not in airports:
 			return pb2.FlightsResponse(flights=[])
 		conn = get_data_conn()
@@ -388,7 +414,8 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		airport = (getattr(request, 'airport', '') or '').strip().upper()
 		days = getattr(request, 'days', 0) or 0
 		# Enforce user scoping at gRPC level
-		if not email or not user_exists(email):
+		canon_email = resolve_canonical_email(email) if email else ''
+		if not email or not canon_email or not user_exists(canon_email):
 			return pb2.DaysResponse(average=0, average_departures=0, average_arrivals=0, airport=airport if airport else '', days=days if days>0 else 7)
 		if not airport:
 			return pb2.DaysResponse(average=0, average_departures=0, average_arrivals=0, airport='', days=days if days>0 else 7)
@@ -399,7 +426,8 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		email = (getattr(request, 'email', '') or '').strip()
 		airport = (getattr(request, 'airport', '') or '').strip().upper()
 		# Enforce user scoping at gRPC level
-		if not email or not user_exists(email):
+		canon_email = resolve_canonical_email(email) if email else ''
+		if not email or not canon_email or not user_exists(canon_email):
 			return pb2.LastFlightsResponse()
 		if not airport:
 			return pb2.LastFlightsResponse()
@@ -435,7 +463,8 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 		
 		if not email or not code:
 			return pb2.AirportThresholdsResponse(status=400, message='email and code required', email=email, airport=code)
-		if not user_exists(email):
+		canon_email = resolve_canonical_email(email)
+		if not canon_email or not user_exists(canon_email):
 			return pb2.AirportThresholdsResponse(status=404, message='user not found', email=email, airport=code)
 		if high_value is not None and low_value is not None and high_value <= low_value:
 			return pb2.AirportThresholdsResponse(status=400, message='high_value must be > low_value', email=email, airport=code)
@@ -444,7 +473,7 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 			conn = get_data_conn()
 			cur = conn.cursor()
 			# Check if exists
-			cur.execute("SELECT 1 FROM interests WHERE email=%s AND airport_code=%s", (email, code))
+			cur.execute("SELECT 1 FROM interests WHERE email=%s AND airport_code=%s", (canon_email, code))
 			if not cur.fetchone():
 				close_connection(conn, cur)
 				return pb2.AirportThresholdsResponse(status=404, message='airport interest not found', email=email, airport=code)
@@ -452,7 +481,7 @@ class DataCollectorService(pb2_grpc.DataCollectorServiceServicer):
 			# Update thresholds
 			cur.execute(
 				"UPDATE interests SET high_value=%s, low_value=%s WHERE email=%s AND airport_code=%s",
-				(high_value, low_value, email, code)
+				(high_value, low_value, canon_email, code)
 			)
 			commit_and_close(conn, cur)
 			return pb2.AirportThresholdsResponse(status=200, message='updated', email=email, airport=code, high_value=high_value or 0, low_value=low_value or 0)

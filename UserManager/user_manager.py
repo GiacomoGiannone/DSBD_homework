@@ -306,6 +306,39 @@ def _get_request_data():
 	return request.get_json(silent=True) or {}
 
 
+@app.post("/resolve")
+def http_resolve():
+	"""Resolve a user identity (email or username) to canonical email.
+	Returns 200 with { email } if found; 404 if not found; 400 if missing.
+	"""
+	data = _get_request_data()
+	identity = (data.get("identity") or "").strip()
+	if not identity:
+		return jsonify({"error": "identity required"}), 400
+	try:
+		conn = get_connection(); cur = conn.cursor()
+		email = None
+		if "@" in identity:
+			cur.execute("SELECT email FROM users WHERE email=%s", (identity,))
+			row = cur.fetchone()
+			email = row[0] if row else None
+		else:
+			cur.execute("SELECT email FROM users WHERE username=%s", (identity,))
+			rows = cur.fetchall()
+			if len(rows) == 1:
+				email = rows[0][0]
+			elif len(rows) > 1:
+				# Ambiguous username; treat as not found to avoid accidental mismap
+				email = None
+		close_connection(conn, cur)
+		if not email:
+			return jsonify({"error": "user not found"}), 404
+		return jsonify({"email": email}), 200
+	except Exception as e:
+		logging.exception("/resolve failed")
+		return jsonify({"error": str(e)}), 500
+
+
 @app.post("/add")
 def http_add():
 	data = _get_request_data()
