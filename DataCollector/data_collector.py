@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import csv
 from io import StringIO
 import json
-from kafka import KafkaProducer
+from confluent_kafka import Producer
 
 import DataCollector_pb2 as pb2
 import DataCollector_pb2_grpc as pb2_grpc
@@ -37,29 +37,39 @@ AIRPORTS_SOURCE_URL = os.getenv("AIRPORTS_SOURCE_URL", "https://raw.githubuserco
 REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "43200"))  # 12 hours default
 GRPC_PORT = int(os.getenv("DATACOLLECTOR_GRPC_PORT", "50052"))
 
-# Kafka configuration
+ # Kafka configuration
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:29092")
 KAFKA_TOPIC_TO_ALERT = os.getenv("KAFKA_TOPIC_TO_ALERT", "to-alert-system")
 KAFKA_TOPIC_TO_NOTIFIER = os.getenv("KAFKA_TOPIC_TO_NOTIFIER", "to-notifier")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-# Initialize Kafka producer
+def _delivery_report(err, msg):
+	"""Asynchronous delivery callback (matches p2025 style)."""
+	if err is not None:
+		logging.error("[KAFKA DEBUG] Delivery failed: %s", err)
+	else:
+		logging.info(
+			"[KAFKA DEBUG] Message delivered to %s [%s] at offset %s",
+			msg.topic(), msg.partition(), msg.offset()
+		)
+
+# Initialize Kafka producer (confluent-kafka, p2025-like)
 def init_kafka_producer():
 	try:
-		logging.info(f"[KAFKA DEBUG] Attempting to initialize KafkaProducer with broker: {KAFKA_BROKER}")
-		producer = KafkaProducer(
-			bootstrap_servers=[KAFKA_BROKER],
-			value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-			retries=3,
-			retry_backoff_ms=100,
-			acks='all',
-			request_timeout_ms=10000
-		)
-		logging.info(f"[KAFKA DEBUG] KafkaProducer initialized successfully: {type(producer).__name__}")
+		logging.info("[KAFKA DEBUG] Initializing confluent_kafka Producer with broker: %s", KAFKA_BROKER)
+		producer_config = {
+			'bootstrap.servers': KAFKA_BROKER,
+			'acks': 'all',
+			'max.in.flight.requests.per.connection': 1,
+			'retries': 3,
+			'linger.ms': 10,
+		}
+		producer = Producer(producer_config)
+		logging.info("[KAFKA DEBUG] Confluent Producer ready")
 		return producer
 	except Exception as e:
-		logging.error(f"[KAFKA DEBUG] Failed to initialize Kafka producer: {type(e).__name__}: {e}")
+		logging.error("[KAFKA DEBUG] Failed to initialize confluent Producer: %s: %s", type(e).__name__, e)
 		return None
 
 kafka_producer = init_kafka_producer()
@@ -237,47 +247,30 @@ def refresh_flights(airports):
 	
 	commit_and_close(conn, cur)
 	
-	# Publish to Kafka with flight data for all users interested in these airports
+	# Publish to Kafka: one message per airport (key=airport)
 	logging.info(f"[KAFKA DEBUG] kafka_producer is {'OK' if kafka_producer else 'NULL'}, flight_counts keys: {list(flight_counts.keys())}")
-	
+
 	if kafka_producer and flight_counts:
 		try:
-			logging.info(f"[KAFKA DEBUG] Starting Kafka publish for {len(flight_counts)} airports")
-			# Get all users interested in these airports
-			conn = get_data_conn()
-			cur = conn.cursor()
-			placeholders = ','.join(['%s']*len(airports))
-			cur.execute(
-				f"SELECT DISTINCT email FROM interests WHERE airport_code IN ({placeholders})",
-				airports
-			)
-			users = [row[0] for row in cur.fetchall()]
-			close_connection(conn, cur)
-			logging.info(f"[KAFKA DEBUG] Found {len(users)} users interested in airports")
-			
-			# Create Kafka message for each user with their interested airports
-			for user_email in users:
-				user_airports = fetch_airports_for_email(user_email)
-				flights_data = [
-					{
-						"airport": ap,
-						"departure_count": flight_counts.get(ap, {}).get("departures", 0),
-						"arrival_count": flight_counts.get(ap, {}).get("arrivals", 0),
-						"timestamp": int(time.time())
-					}
-					for ap in user_airports if ap in flight_counts
-				]
-				
-				if flights_data:
-					message = {
-						"email": user_email,
-						"flights_data": flights_data
-					}
-					logging.info(f"[KAFKA DEBUG] Sending message for {user_email}: {message}")
-					kafka_producer.send(KAFKA_TOPIC_TO_ALERT, value=message)
-					logging.info(f"[KAFKA DEBUG] Published alert for {user_email}: {len(flights_data)} airports")
-				else:
-					logging.debug(f"[KAFKA DEBUG] No flights_data for {user_email}")
+			logging.info(f"[KAFKA DEBUG] Starting per-airport Kafka publish for {len(flight_counts)} airports")
+			for ap, counts in flight_counts.items():
+				value = {
+					"airport": ap,
+					"departure_count": counts.get("departures", 0),
+					"arrival_count": counts.get("arrivals", 0),
+					"timestamp": int(time.time())
+				}
+				kafka_producer.produce(
+					KAFKA_TOPIC_TO_ALERT,
+					json.dumps(value).encode('utf-8'),
+					key=ap.encode('utf-8'),
+					callback=_delivery_report
+				)
+				kafka_producer.poll(0)
+				logging.info("[KAFKA DEBUG] Published airport update %s: dep=%s arr=%s", ap, value["departure_count"], value["arrival_count"])
+			remaining = kafka_producer.flush(timeout=10)
+			if remaining:
+				logging.warning("[KAFKA DEBUG] %d Kafka messages not delivered within timeout", remaining)
 		except Exception as e:
 			logging.error(f"[KAFKA DEBUG] Failed to publish to Kafka: {type(e).__name__}: {e}")
 	else:
@@ -628,6 +621,50 @@ if __name__ == '__main__':
 			'average_arrivals': round(res.average_arrivals, 2)
 		}
 		return jsonify(payload)
+
+	@app.post('/api/update_thresholds')
+	def api_update_thresholds():
+		"""Update low/high thresholds for a user's airport interest via REST."""
+		data = request.get_json(silent=True) or {}
+		email = (data.get('email') or '').strip()
+		code = (data.get('code') or '').strip().upper()
+		# Parse optional numeric values; allow null to clear
+		def _to_int_or_none(v):
+			if v is None:
+				return None
+			if isinstance(v, str) and v.strip() == '':
+				return None
+			try:
+				return int(v)
+			except Exception:
+				return None
+		high_value = _to_int_or_none(data.get('high_value'))
+		low_value = _to_int_or_none(data.get('low_value'))
+
+		if not email or not code:
+			return jsonify({'status': 400, 'message': 'email and code required'}), 400
+		if not user_exists(email):
+			return jsonify({'status': 404, 'message': 'user not found'}), 404
+
+		svc = DataCollectorService()
+		res = svc.UpdateAirportThresholds(
+			type('Req', (), {
+				'email': email,
+				'code': code,
+				'high_value': high_value,
+				'low_value': low_value
+			})(),
+			None
+		)
+		status_code = 200 if res.status in (200, 404) else 400 if res.status == 400 else 500 if res.status == 500 else 200
+		return jsonify({
+			'status': res.status,
+			'message': res.message,
+			'email': getattr(res, 'email', email),
+			'airport': getattr(res, 'airport', code),
+			'high_value': getattr(res, 'high_value', high_value or 0),
+			'low_value': getattr(res, 'low_value', low_value or 0),
+		}), status_code
 
 	@app.post('/api/last_flights')
 	def api_last_flights():

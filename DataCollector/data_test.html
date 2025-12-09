@@ -99,6 +99,16 @@
       document.getElementById('btn-debug-data').addEventListener('click', () => {
       api('/api/debug_data_range', { email }, document.getElementById('out-debug-data'));
       });
+
+      // Update thresholds (high/low)
+      document.getElementById('btn-update-thresholds').addEventListener('click', () => {
+        const code = document.getElementById('thr-code').value.trim().toUpperCase();
+        const highStr = document.getElementById('thr-high').value.trim();
+        const lowStr = document.getElementById('thr-low').value.trim();
+        // Send empty string to clear (server interprets '' as null)
+        const payload = { email, code, high_value: highStr, low_value: lowStr };
+        api('/api/update_thresholds', payload, document.getElementById('out-update-thresholds'));
+      });
     }
     window.addEventListener('DOMContentLoaded', wire);
   </script>
@@ -176,6 +186,18 @@
       <button id="btn-last-flights">Get Last Flights</button>
     </div>
     <div id="out-last-flights" class="out"></div>
+  </div>
+
+  <div class="card">
+    <h2>Update Thresholds (high/low)</h2>
+    <p>Inserisci l'aeroporto e le soglie. Lascia vuoto un campo per <strong>cancellare</strong> quella soglia. Compila entrambi per impostarle entrambe.</p>
+    <div class="row">
+      <input id="thr-code" placeholder="ICAO (es. LIMC)" />
+      <input id="thr-high" placeholder="high_value (int o vuoto)" />
+      <input id="thr-low" placeholder="low_value (int o vuoto)" />
+      <button id="btn-update-thresholds">Update Thresholds</button>
+    </div>
+    <div id="out-update-thresholds" class="out"></div>
   </div>
 
 </body>

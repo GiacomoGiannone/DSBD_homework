@@ -6,4 +6,4 @@ requests
 schedule
 python-dotenv
 flask-cors
-kafka-python
+confluent-kafka
