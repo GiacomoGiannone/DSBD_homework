@@ -111,6 +111,7 @@ services:
       KAFKA_BROKER: kafka:29092
       KAFKA_TOPIC_TO_ALERT: to-alert-system
       KAFKA_TOPIC_TO_NOTIFIER: to-notifier
+      FORCE_OPENSKY_ERRORS: "false"
 
       # OpenSky OAuth credentials (read from DataCollector/credentials.json)
       # OPENSKY_USER: "your_username"

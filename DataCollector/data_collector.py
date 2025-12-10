@@ -13,6 +13,7 @@ import csv
 from io import StringIO
 import json
 from confluent_kafka import Producer
+from circuit_breaker import CircuitBreaker, CircuitBreakerOpenException
 
 import DataCollector_pb2 as pb2
 import DataCollector_pb2_grpc as pb2_grpc
@@ -37,10 +38,16 @@ AIRPORTS_SOURCE_URL = os.getenv("AIRPORTS_SOURCE_URL", "https://raw.githubuserco
 REFRESH_INTERVAL_SECONDS = int(os.getenv("REFRESH_INTERVAL_SECONDS", "43200"))  # 12 hours default
 GRPC_PORT = int(os.getenv("DATACOLLECTOR_GRPC_PORT", "50052"))
 
- # Kafka configuration
+# Debug: Force OpenSky failures to test circuit breaker
+FORCE_OPENSKY_ERRORS = os.getenv("FORCE_OPENSKY_ERRORS", "false").lower() == "true"
+
+# Kafka configuration
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:29092")
 KAFKA_TOPIC_TO_ALERT = os.getenv("KAFKA_TOPIC_TO_ALERT", "to-alert-system")
 KAFKA_TOPIC_TO_NOTIFIER = os.getenv("KAFKA_TOPIC_TO_NOTIFIER", "to-notifier")
+
+# Debug: Force OpenSky API failures for circuit breaker testing (set via env var FORCE_OPENSKY_ERRORS=true)
+FORCE_OPENSKY_ERRORS = os.getenv("FORCE_OPENSKY_ERRORS", "false").lower() == "true"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -73,6 +80,9 @@ def init_kafka_producer():
 		return None
 
 kafka_producer = init_kafka_producer()
+
+# Initialize CircuitBreaker for OpenSky API (5 failures before opening, 60 seconds recovery timeout)
+opensky_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60, expected_exception=Exception)
 
 def get_data_conn():
 	return mysql.connector.connect(**DATA_DB)
@@ -199,6 +209,11 @@ def compute_average_flights_for_airport(airport_code: str, days: int = 7):
 
 def opensky_get(url, params):
 	"""Make authenticated request to OpenSky API using OAuth token or basic auth."""
+	# DEBUG: Force errors for circuit breaker testing
+	if FORCE_OPENSKY_ERRORS:
+		logging.error("[DEBUG MODE] Forcing OpenSky API error for circuit breaker testing!")
+		raise Exception("OpenSky API forced error (DEBUG MODE)")
+	
 	headers = {}
 	auth = None
 	
@@ -217,6 +232,19 @@ def opensky_get(url, params):
 		logging.warning("OpenSky request failed: %s", e)
 	return []
 
+def opensky_get_with_breaker(url, params):
+	"""Wrapper around opensky_get that uses CircuitBreaker for reliability."""
+	try:
+		result = opensky_breaker.call(opensky_get, url, params)
+		logging.info("[CIRCUIT BREAKER] OpenSky API call succeeded (state: %s)", opensky_breaker.state)
+		return result
+	except CircuitBreakerOpenException:
+		logging.error("[CIRCUIT BREAKER] OpenSky API circuit is OPEN - calls denied. Service temporarily unavailable.")
+		return []
+	except Exception as e:
+		logging.error("[CIRCUIT BREAKER] Error calling OpenSky: %s", e)
+		return []
+
 
 def refresh_flights(airports):
 	begin = int(time.time()) - 12*3600 #past 7 days
@@ -229,8 +257,8 @@ def refresh_flights(airports):
 	for code in airports:
 		dep_url = "https://opensky-network.org/api/flights/departure"
 		arr_url = "https://opensky-network.org/api/flights/arrival"
-		departures = opensky_get(dep_url, {"airport": code, "begin": begin, "end": end}) or []
-		arrivals = opensky_get(arr_url, {"airport": code, "begin": begin, "end": end}) or []
+		departures = opensky_get_with_breaker(dep_url, {"airport": code, "begin": begin, "end": end}) or []
+		arrivals = opensky_get_with_breaker(arr_url, {"airport": code, "begin": begin, "end": end}) or []
 		
 		dep_count = 0
 		arr_count = 0
