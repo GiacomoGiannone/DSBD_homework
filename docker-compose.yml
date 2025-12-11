@@ -111,11 +111,6 @@ services:
       KAFKA_TOPIC_TO_NOTIFIER: to-notifier
       FORCE_OPENSKY_ERRORS: "false"
 
-      # OpenSky OAuth credentials (read from DataCollector/credentials.json)
-      # OPENSKY_USER: "your_username"
-      # OPENSKY_PASS: "your_password"
-    volumes:
-      - ./DataCollector/credentials.json:/credentials/credentials.json:ro
     ports:
       - "8082:8082"     # REST test (Postman)
     depends_on:
