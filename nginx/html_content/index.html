@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenSky - Flight Tracking System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            background: white;
+            padding: 60px 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 18px;
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+        
+        .features {
+            background: #f9f9f9;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 40px;
+            text-align: left;
+        }
+        
+        .features h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .features ul {
+            list-style: none;
+            color: #666;
+            line-height: 2;
+        }
+        
+        .features li:before {
+            content: "✓ ";
+            color: #28a745;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 14px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .info-box {
+            background: #e8f4f8;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-top: 30px;
+            text-align: left;
+            border-radius: 5px;
+        }
+        
+        .info-box h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .info-box p {
+            color: #555;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✈️ OpenSky</h1>
+        <p class="subtitle">Real-time Flight Tracking System powered by OpenSky Network</p>
+        
+        <div class="features">
+            <h3>Features</h3>
+            <ul>
+                <li>Track flights from any airport worldwide</li>
+                <li>Real-time flight data from OpenSky API</li>
+                <li>Set custom thresholds for flight alerts</li>
+                <li>Reliable message processing with Kafka</li>
+                <li>Circuit breaker protection for API resilience</li>
+                <li>Scalable microservices architecture</li>
+            </ul>
+        </div>
+        
+        <div class="button-group">
+            <a href="/registration" class="btn btn-primary">Create Account</a>
+            <a href="/login.html" class="btn btn-secondary">Login</a>
+        </div>
+        
+        <div class="info-box">
+            <h4>🔒 About Your Data</h4>
+            <p>Your account and flight tracking preferences are securely stored. We use industry-standard encryption and best practices for data protection. Flight data is fetched from OpenSky Network and processed through our reliable Kafka infrastructure.</p>
+        </div>
+    </div>
+</body>
+</html>
