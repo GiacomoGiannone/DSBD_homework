@@ -170,6 +170,22 @@ services:
     networks:
       - app_net
 
+  # -------------------------------------------------------
+  # API GATEWAY (NGINX - reverse proxy)
+  # -------------------------------------------------------
+  api-gateway:
+    build: ./nginx
+    container_name: api-gateway
+    ports:
+      - "80:80"       # HTTP
+    depends_on:
+      - user-manager
+      - data-collector
+      - alert-system
+      - alert-notifier
+    networks:
+      - app_net
+
 # -------------------------------------------------------
 # VOLUMI PERSISTENTI
 # -------------------------------------------------------
