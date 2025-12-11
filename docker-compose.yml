@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # -------------------------------------------------------
   # USER DATABASE (isolated on user_db_net)
@@ -158,19 +156,20 @@ services:
   alert-notifier:
     build: ./AlertNotifierSystem
     container_name: alert-notifier
+    env_file:
+      - .env
     environment:
       KAFKA_BROKER: kafka:29092
       KAFKA_TOPIC_IN: to-notifier
       KAFKA_GROUP_ID: alert-notifier-group
-      # Email settings
-      # Set DISABLE_EMAIL to "false" to enable real SMTP sending.
-      # If SMTP_HOST is empty, service will safely fallback to mock send.
-      DISABLE_EMAIL: "false"
-      SMTP_HOST: "smtp.gmail.com"
-      SMTP_PORT: 587
-      SMTP_USER: "superfily02@gmail.com"
-      SMTP_PASS: "rlzb esey jehc edpj"
-      SMTP_FROM: "superfily02@gmail.com"
+      # Email settings loaded from .env (do not commit secrets)
+      # Defaults keep safe behavior (mock send) if not provided
+      DISABLE_EMAIL: ${DISABLE_EMAIL:-true}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     depends_on:
       - kafka
     networks:
