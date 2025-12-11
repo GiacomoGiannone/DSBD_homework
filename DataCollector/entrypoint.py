@@ -30,23 +30,19 @@ def get_token(client_id, client_secret):
 
 def main():
     # Load credentials
-    cred_path = '/credentials/credentials.json'
-    if os.path.exists(cred_path):
-        with open(cred_path) as f:
-            creds = json.load(f)
+    #read from .env file
+    client_id = os.getenv("CLIENT_ID")
+    client_secret = os.getenv("CLIENT_SECRET")
         
-        client_id = creds.get('clientId')
-        client_secret = creds.get('clientSecret')
+    if client_id and client_secret:
+        os.environ['OPEN_SKY_CLIENT_ID'] = client_id
+        os.environ['OPEN_SKY_CLIENT_SECRET'] = client_secret
         
-        if client_id and client_secret:
-            os.environ['OPEN_SKY_CLIENT_ID'] = client_id
-            os.environ['OPEN_SKY_CLIENT_SECRET'] = client_secret
-            
-            # Generate token
-            token = get_token(client_id, client_secret)
-            if token:
-                os.environ['OPEN_SKY_TOKEN'] = token
-                print("✅ Generated OpenSky token")
+        # Generate token
+        token = get_token(client_id, client_secret)
+        if token:
+            os.environ['OPEN_SKY_TOKEN'] = token
+            print("Generated OpenSky token")
     
     # Start app
     os.execvp(sys.executable, [sys.executable, '/app/data_collector.py'])
