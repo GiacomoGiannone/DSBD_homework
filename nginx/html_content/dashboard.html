@@ -165,6 +165,8 @@
             font-size: 12px;
             color: #333;
             display: none;
+            white-space: pre-wrap; /* preserve indentation and line breaks */
+            overflow-x: auto;     /* allow horizontal scroll if needed */
         }
         
         .response-box.show {
@@ -199,49 +201,49 @@
             <div class="card">
                 <h3>📍 Add Airport</h3>
                 <p>Start tracking flights for a specific airport. Set your high and low value thresholds for alerts.</p>
-                <button class="btn" onclick="scrollTo('add-airport')">Add Airport</button>
+                <button class="btn" onclick="goToSection('add-airport')">Add Airport</button>
             </div>
             
             <div class="card">
                 <h3>❌ Remove Airport</h3>
                 <p>Stop tracking a specific airport and remove it from your list.</p>
-                <button class="btn" onclick="scrollTo('remove-airport')">Remove Airport</button>
+                <button class="btn" onclick="goToSection('remove-airport')">Remove Airport</button>
             </div>
             
             <div class="card">
                 <h3>📊 Refresh Flights</h3>
                 <p>Manually trigger a refresh to fetch the latest flight data from OpenSky API.</p>
-                <button class="btn" onclick="scrollTo('refresh')">Refresh Data</button>
+                <button class="btn" onclick="goToSection('refresh')">Refresh Data</button>
             </div>
             
             <div class="card">
                 <h3>📋 List Airports</h3>
                 <p>View all airports you're currently tracking and their configurations.</p>
-                <button class="btn" onclick="scrollTo('list-airports')">View Airports</button>
+                <button class="btn" onclick="goToSection('list-airports')">View Airports</button>
             </div>
             
             <div class="card">
                 <h3>✈️ List Flights</h3>
                 <p>View all flights for a specific airport or all tracked airports.</p>
-                <button class="btn" onclick="scrollTo('list-flights')">View Flights</button>
+                <button class="btn" onclick="goToSection('list-flights')">View Flights</button>
             </div>
             
             <div class="card">
                 <h3>📈 Average Flights Per Day</h3>
                 <p>Get statistics on average flight volume per day for an airport.</p>
-                <button class="btn" onclick="scrollTo('average-flights')">View Average</button>
+                <button class="btn" onclick="goToSection('average-flights')">View Average</button>
             </div>
             
             <div class="card">
                 <h3>🕐 Last Flights</h3>
                 <p>See the most recent departures and arrivals for an airport.</p>
-                <button class="btn" onclick="scrollTo('last-flights')">View Last Flights</button>
+                <button class="btn" onclick="goToSection('last-flights')">View Last Flights</button>
             </div>
             
             <div class="card">
                 <h3>⚙️ Update Thresholds</h3>
                 <p>Modify the high and low value thresholds for an airport's alerts.</p>
-                <button class="btn" onclick="scrollTo('update-thresholds')">Update Thresholds</button>
+                <button class="btn" onclick="goToSection('update-thresholds')">Update Thresholds</button>
             </div>
         </div>
         
@@ -250,16 +252,17 @@
             <h2>📍 Add Airport to Track</h2>
             <form id="addAirportForm">
                 <div class="form-group">
-                    <label for="airportCode">Airport Code (IATA)</label>
-                    <input type="text" id="airportCode" placeholder="e.g., LIMC, LFPG, JFK" required>
+                    <label for="airportCode">Airport Code (IATA/ICAO)</label>
+                    <input type="text" id="airportCode" list="airportSuggestAdd" placeholder="e.g., LIMC, LFPG, KJFK" required>
+                    <datalist id="airportSuggestAdd"></datalist>
                 </div>
                 <div class="form-group">
                     <label for="highValue">High Value Threshold</label>
-                    <input type="number" id="highValue" placeholder="e.g., 100" required>
+                    <input type="number" id="highValue" placeholder="e.g., 100 (leave empty for NULL)">
                 </div>
                 <div class="form-group">
                     <label for="lowValue">Low Value Threshold</label>
-                    <input type="number" id="lowValue" placeholder="e.g., 20" required>
+                    <input type="number" id="lowValue" placeholder="e.g., 20 (leave empty for NULL)">
                 </div>
                 <button type="submit" class="btn">Add Airport</button>
             </form>
@@ -271,8 +274,9 @@
             <h2>❌ Remove Airport</h2>
             <form id="removeAirportForm">
                 <div class="form-group">
-                    <label for="removeAirportCode">Airport Code (IATA)</label>
-                    <input type="text" id="removeAirportCode" placeholder="e.g., LIMC, LFPG, JFK" required>
+                    <label for="removeAirportCode">Airport Code (IATA/ICAO)</label>
+                    <input type="text" id="removeAirportCode" list="airportSuggestRemove" placeholder="e.g., LIMC, LFPG, JFK" required>
+                    <datalist id="airportSuggestRemove"></datalist>
                 </div>
                 <button type="submit" class="btn">Remove Airport</button>
             </form>
@@ -300,7 +304,8 @@
             <form id="listFlightsForm">
                 <div class="form-group">
                     <label for="flightFilterAirport">Airport Code (optional)</label>
-                    <input type="text" id="flightFilterAirport" placeholder="e.g., LIMC (leave empty for all)">
+                    <input type="text" id="flightFilterAirport" list="airportSuggestListFlights" placeholder="e.g., LIMC (leave empty for all)">
+                    <datalist id="airportSuggestListFlights"></datalist>
                 </div>
                 <button type="submit" class="btn">List Flights</button>
             </form>
@@ -312,8 +317,9 @@
             <h2>📈 Average Flights Per Day</h2>
             <form id="averageFlightsForm">
                 <div class="form-group">
-                    <label for="avgAirport">Airport Code (IATA)</label>
-                    <input type="text" id="avgAirport" placeholder="e.g., LIMC" required>
+                    <label for="avgAirport">Airport Code (IATA/ICAO)</label>
+                    <input type="text" id="avgAirport" list="airportSuggestAvg" placeholder="e.g., LIMC" required>
+                    <datalist id="airportSuggestAvg"></datalist>
                 </div>
                 <div class="form-group">
                     <label for="daysInput">Number of Days</label>
@@ -329,8 +335,9 @@
             <h2>🕐 Last Flights</h2>
             <form id="lastFlightsForm">
                 <div class="form-group">
-                    <label for="lastAirport">Airport Code (IATA)</label>
-                    <input type="text" id="lastAirport" placeholder="e.g., LIMC" required>
+                    <label for="lastAirport">Airport Code (IATA/ICAO)</label>
+                    <input type="text" id="lastAirport" list="airportSuggestLast" placeholder="e.g., LIMC" required>
+                    <datalist id="airportSuggestLast"></datalist>
                 </div>
                 <button type="submit" class="btn">Get Last Flights</button>
             </form>
@@ -343,8 +350,9 @@
             <p>Modify the high and low value thresholds for an airport. Leave a field empty to clear that threshold.</p>
             <form id="updateThresholdsForm">
                 <div class="form-group">
-                    <label for="thrAirport">Airport Code (IATA)</label>
-                    <input type="text" id="thrAirport" placeholder="e.g., LIMC" required>
+                    <label for="thrAirport">Airport Code (IATA/ICAO)</label>
+                    <input type="text" id="thrAirport" list="airportSuggestThr" placeholder="e.g., LIMC" required>
+                    <datalist id="airportSuggestThr"></datalist>
                 </div>
                 <div class="form-group">
                     <label for="thrHigh">High Value Threshold</label>
@@ -365,9 +373,58 @@
         const userEmail = localStorage.getItem('userEmail') || 'guest';
         document.getElementById('userInfo').textContent = `You are logged in as: ${userEmail}`;
         
-        function scrollTo(id) {
-            document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+        function goToSection(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
+
+        // Airport suggestions (datalist) wired to /api/airport_suggest?q=...
+        function wireAirportSuggest(inputId, datalistId) {
+            const input = document.getElementById(inputId);
+            const list = document.getElementById(datalistId);
+            if (!input || !list) return;
+            let debounce;
+            input.addEventListener('input', async () => {
+                const q = input.value.trim();
+                clearTimeout(debounce);
+                if (q.length < 2) {
+                    list.innerHTML = '';
+                    return;
+                }
+                debounce = setTimeout(async () => {
+                    try {
+                        const res = await fetch(`/api/airport_suggest?q=${encodeURIComponent(q)}`);
+                        const data = await res.json();
+                        const items = (data && data.items) ? data.items : [];
+                        list.innerHTML = '';
+                        for (const it of items) {
+                            const ident = (it.ident || '').toUpperCase();
+                            const name = it.name || '';
+                            const city = it.city || '';
+                            const country = it.country || '';
+                            const iata = (it.iata || '').toUpperCase();
+                            const icao = (it.icao || '').toUpperCase();
+                            const opt = document.createElement('option');
+                            opt.value = ident;
+                            opt.textContent = `${ident} — ${name}${city ? ' • ' + city : ''}${country ? ' • ' + country : ''}${iata || icao ? ' (' + [iata, icao].filter(Boolean).join('/') + ')' : ''}`;
+                            list.appendChild(opt);
+                        }
+                    } catch (e) {
+                        list.innerHTML = '';
+                    }
+                }, 150);
+            });
+        }
+
+        // Wire suggestions for relevant inputs
+        wireAirportSuggest('airportCode', 'airportSuggestAdd');
+        wireAirportSuggest('removeAirportCode', 'airportSuggestRemove');
+        wireAirportSuggest('flightFilterAirport', 'airportSuggestListFlights');
+        wireAirportSuggest('avgAirport', 'airportSuggestAvg');
+        wireAirportSuggest('lastAirport', 'airportSuggestLast');
+        wireAirportSuggest('thrAirport', 'airportSuggestThr');
         
         function logout() {
             localStorage.removeItem('userEmail');
@@ -389,8 +446,8 @@
             e.preventDefault();
             
             const airportCode = document.getElementById('airportCode').value;
-            const highValue = parseInt(document.getElementById('highValue').value);
-            const lowValue = parseInt(document.getElementById('lowValue').value);
+            const highStr = document.getElementById('highValue').value.trim();
+            const lowStr = document.getElementById('lowValue').value.trim();
             
             const responseBox = document.getElementById('addAirportResponse');
             responseBox.classList.add('show');
@@ -400,8 +457,8 @@
                 const data = await apiCall('/api/add_airport', {
                     email: userEmail,
                     code: airportCode,
-                    high_value: highValue,
-                    low_value: lowValue
+                    high_value: highStr,
+                    low_value: lowStr
                 });
                 
                 responseBox.classList.remove('error');
@@ -468,10 +525,14 @@
             responseBox.textContent = 'Loading...';
             
             try {
-                const data = await apiCall('/api/list_airports', { email: userEmail });
+                const data = await apiCall('/api/list_airports_with_thresholds', { email: userEmail });
                 responseBox.classList.remove('error');
                 responseBox.classList.add('success');
-                responseBox.textContent = JSON.stringify(data, null, 2);
+                // Pretty print including thresholds
+                responseBox.textContent = JSON.stringify({
+                    count: (data.items || []).length,
+                    items: data.items || []
+                }, null, 2);
             } catch (error) {
                 responseBox.classList.remove('success');
                 responseBox.classList.add('error');

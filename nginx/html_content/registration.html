@@ -223,8 +223,8 @@
                 hasError = true;
             }
             
-            if (password.length < 6) {
-                document.getElementById('passwordError').textContent = 'Password must be at least 6 characters';
+            if (password.length < 3) {
+                document.getElementById('passwordError').textContent = 'Password must be at least 3 characters';
                 document.getElementById('passwordError').style.display = 'block';
                 hasError = true;
             }
@@ -260,7 +260,7 @@
                     successMsg.style.display = 'block';
                     form.reset();
                     setTimeout(() => {
-                        window.location.href = '/dashboard.html';
+                        window.location.href = '/dashboard';
                     }, 2000);
                 } else {
                     alert('Registration failed: ' + (data.message || 'Unknown error'));

@@ -624,8 +624,19 @@ if __name__ == '__main__':
 		data = request.get_json(silent=True) or {}
 		email = (data.get('email') or '').strip()
 		code = (data.get('code') or '').strip().upper()
+		def _to_int_or_none(v):
+			if v is None:
+				return None
+			if isinstance(v, str) and v.strip() == '':
+				return None
+			try:
+				return int(v)
+			except Exception:
+				return None
+		high_value = _to_int_or_none(data.get('high_value'))
+		low_value = _to_int_or_none(data.get('low_value'))
 		svc = DataCollectorService()
-		res = svc.AddAirport(type('Req', (), {'email': email, 'code': code})(), None)
+		res = svc.AddAirport(type('Req', (), {'email': email, 'code': code, 'high_value': high_value, 'low_value': low_value})(), None)
 		return jsonify({'status': res.status, 'message': res.message}), (201 if res.status == 201 else 200 if res.status == 200 else 400 if res.status == 400 else 404 if res.status == 404 else 409 if res.status == 409 else 500)
 
 	@app.post('/api/remove_airport')
@@ -648,6 +659,36 @@ if __name__ == '__main__':
 		svc = DataCollectorService()
 		res = svc.ListAirports(type('Req', (), {'email': email})(), None)
 		return jsonify({'codes': list(res.codes)})
+
+	@app.post('/api/list_airports_with_thresholds')
+	def api_list_airports_with_thresholds():
+		data = request.get_json(silent=True) or {}
+		email = (data.get('email') or '').strip()
+		if not email:
+			return jsonify({'items': []}), 400
+		canon_email = resolve_canonical_email(email)
+		if not canon_email or not user_exists(canon_email):
+			return jsonify({'items': []}), 404
+		conn = get_data_conn(); cur = conn.cursor()
+		cur.execute(
+			"""
+			SELECT airport_code, high_value, low_value
+			FROM interests
+			WHERE email=%s
+			ORDER BY airport_code
+			""",
+			(canon_email,)
+		)
+		rows = cur.fetchall()
+		close_connection(conn, cur)
+		items = []
+		for r in rows:
+			items.append({
+				'airport': r[0],
+				'high_value': r[1] if r[1] is not None else None,
+				'low_value': r[2] if r[2] is not None else None,
+			})
+		return jsonify({'items': items})
 
 	@app.post('/api/refresh')
 	def api_refresh():
@@ -714,13 +755,14 @@ if __name__ == '__main__':
 			None
 		)
 		status_code = 200 if res.status in (200, 404) else 400 if res.status == 400 else 500 if res.status == 500 else 200
+		# Return the parsed request values to preserve nulls (protobuf defaults may coerce to 0)
 		return jsonify({
 			'status': res.status,
 			'message': res.message,
 			'email': getattr(res, 'email', email),
 			'airport': getattr(res, 'airport', code),
-			'high_value': getattr(res, 'high_value', high_value or 0),
-			'low_value': getattr(res, 'low_value', low_value or 0),
+			'high_value': high_value if high_value is not None else None,
+			'low_value': low_value if low_value is not None else None,
 		}), status_code
 
 	@app.post('/api/last_flights')

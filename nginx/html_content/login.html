@@ -55,6 +55,7 @@
         }
         
         input[type="email"],
+        input[type="text"],
         input[type="password"] {
             width: 100%;
             padding: 12px;
@@ -65,6 +66,7 @@
         }
         
         input[type="email"]:focus,
+        input[type="text"]:focus,
         input[type="password"]:focus {
             outline: none;
             border-color: #667eea;
@@ -133,15 +135,15 @@
         
         <form id="loginForm">
             <div class="form-group">
-                <label for="email">Email Address</label>
+                <label for="identity">Email or Username</label>
                 <input 
-                    type="email" 
-                    id="email" 
-                    name="email" 
-                    placeholder="you@example.com" 
+                    type="text" 
+                    id="identity" 
+                    name="identity" 
+                    placeholder="you@example.com or yourusername" 
                     required
                 >
-                <div class="error-message" id="emailError"></div>
+                <div class="error-message" id="identityError"></div>
             </div>
             
             <div class="form-group">
@@ -171,26 +173,25 @@
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const email = document.getElementById('email').value;
+            const identity = document.getElementById('identity').value.trim();
             const password = document.getElementById('password').value;
             
             // Clear previous errors
-            document.getElementById('emailError').textContent = '';
+            document.getElementById('identityError').textContent = '';
             document.getElementById('passwordError').textContent = '';
             
             // Basic validation
             let hasError = false;
             
-            if (!email.includes('@')) {
-                document.getElementById('emailError').textContent = 'Invalid email format';
-                document.getElementById('emailError').style.display = 'block';
-                hasError = true;
-            }
-            
-            if (password.length < 6) {
-                document.getElementById('passwordError').textContent = 'Password must be at least 6 characters';
-                document.getElementById('passwordError').style.display = 'block';
-                hasError = true;
+            // Identity can be email or username
+            if (identity.includes('@')) {
+                // Basic email check
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(identity)) {
+                    document.getElementById('identityError').textContent = 'Invalid email format';
+                    document.getElementById('identityError').style.display = 'block';
+                    hasError = true;
+                }
             }
             
             if (hasError) return;
@@ -203,7 +204,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        identity: email,
+                        identity: identity,
                         password: password
                     })
                 });
@@ -211,13 +212,13 @@
                 const data = await response.json();
                 
                 if (response.ok && data.status === 200) {
-                    // Save email to localStorage for dashboard
-                    localStorage.setItem('userEmail', data.email || email);
+                    // Save canonical email to localStorage for dashboard (fallback to identity)
+                    localStorage.setItem('userEmail', data.email || identity);
                     
                     successMsg.style.display = 'block';
                     form.reset();
                     setTimeout(() => {
-                        window.location.href = '/dashboard.html';
+                        window.location.href = '/dashboard';
                     }, 2000);
                 } else {
                     alert('Login failed: ' + (data.message || 'Invalid credentials'));
