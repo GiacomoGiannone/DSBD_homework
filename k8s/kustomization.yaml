@@ -1,0 +1,24 @@
+# Kustomization file for easy deployment
+# Usage: kubectl apply -k k8s/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dsbd
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - configmaps.yaml
+  - userdb.yaml
+  - datadb.yaml
+  - kafka.yaml
+  - user-manager.yaml
+  - data-collector.yaml
+  - alert-system.yaml
+  - alert-notifier.yaml
+  - api-gateway.yaml
+  - ingress.yaml
+
+commonLabels:
+  project: dsbd-flight-tracker
+  environment: development

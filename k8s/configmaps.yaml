@@ -1,0 +1,79 @@
+# ConfigMaps for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: dsbd
+data:
+  # Kafka configuration
+  kafka-broker: "kafka:29092"
+  kafka-topic-to-alert: "to-alert-system"
+  kafka-topic-to-notifier: "to-notifier"
+  
+  # Database configuration
+  userdb-host: "userdb"
+  userdb-port: "3306"
+  userdb-name: "userdb"
+  
+  datadb-host: "datadb"
+  datadb-port: "3306"
+  datadb-name: "datadb"
+  
+  # OpenSky API configuration
+  opensky-user: ""
+  opensky-pass: ""
+  
+  # Refresh interval (12 hours in seconds)
+  refresh-interval: "43200"
+  
+  # Email configuration
+  disable-email: "true"
+
+---
+# Init SQL for User Database
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: userdb-init
+  namespace: dsbd
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      username VARCHAR(100) NOT NULL UNIQUE,
+      password VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+---
+# Init SQL for Data Database
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datadb-init
+  namespace: dsbd
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS interests (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL,
+      airport_code VARCHAR(10) NOT NULL,
+      high_value INT DEFAULT NULL,
+      low_value INT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_interest (email, airport_code)
+    );
+    
+    CREATE TABLE IF NOT EXISTS flights (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      icao24 VARCHAR(20) NOT NULL,
+      callsign VARCHAR(20),
+      departure_airport VARCHAR(10),
+      arrival_airport VARCHAR(10),
+      departure_time BIGINT,
+      arrival_time BIGINT,
+      flight_type ENUM('DEPARTURE', 'ARRIVAL') NOT NULL,
+      last_refresh TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_flight (icao24, departure_time, flight_type)
+    );

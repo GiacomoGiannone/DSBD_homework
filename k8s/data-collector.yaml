@@ -1,0 +1,110 @@
+# Data Collector - Deployment + Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-collector
+  namespace: dsbd
+  labels:
+    app: data-collector
+spec:
+  replicas: 3  # Load balanced with least_conn strategy
+  selector:
+    matchLabels:
+      app: data-collector
+  template:
+    metadata:
+      labels:
+        app: data-collector
+    spec:
+      containers:
+        - name: data-collector
+          image: dsbd/data-collector:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8082
+              name: http
+            - containerPort: 50052
+              name: grpc
+          env:
+            - name: USER_MANAGER_HOST
+              value: "user-manager"
+            - name: USER_MANAGER_PORT
+              value: "50051"
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: datadb-host
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: datadb-port
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: datadb-name
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: db-user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: db-password
+            - name: KAFKA_BROKER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: kafka-broker
+            - name: KAFKA_TOPIC_TO_ALERT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: kafka-topic-to-alert
+            - name: KAFKA_TOPIC_TO_NOTIFIER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: kafka-topic-to-notifier
+            - name: REFRESH_INTERVAL_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: refresh-interval
+            - name: FORCE_OPENSKY_ERRORS
+              value: "false"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+          readinessProbe:
+            httpGet:
+              path: /api/airport_suggest?q=test
+              port: 8082
+            initialDelaySeconds: 15
+            periodSeconds: 10
+
+---
+# Data Collector Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-collector
+  namespace: dsbd
+spec:
+  selector:
+    app: data-collector
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+    - name: grpc
+      port: 50052
+      targetPort: 50052

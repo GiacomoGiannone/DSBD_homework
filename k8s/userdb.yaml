@@ -1,0 +1,79 @@
+# User Database - StatefulSet + Service
+# StatefulSet provides stable network identity and persistent storage
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: userdb
+  namespace: dsbd
+spec:
+  serviceName: userdb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: userdb
+  template:
+    metadata:
+      labels:
+        app: userdb
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: "userdb"
+          volumeMounts:
+            - name: userdb-data
+              mountPath: /var/lib/mysql
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: init-sql
+          configMap:
+            name: userdb-init
+  volumeClaimTemplates:
+    - metadata:
+        name: userdb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+---
+# User Database Service (ClusterIP for internal access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: userdb
+  namespace: dsbd
+spec:
+  selector:
+    app: userdb
+  ports:
+    - port: 3306
+      targetPort: 3306
+  clusterIP: None  # Headless service for StatefulSet

@@ -1,0 +1,78 @@
+# Data Database - StatefulSet + Service
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: datadb
+  namespace: dsbd
+spec:
+  serviceName: datadb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: datadb
+  template:
+    metadata:
+      labels:
+        app: datadb
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.0
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: mysql-root-password
+            - name: MYSQL_DATABASE
+              value: "datadb"
+          volumeMounts:
+            - name: datadb-data
+              mountPath: /var/lib/mysql
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command:
+                - mysqladmin
+                - ping
+                - -h
+                - localhost
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: init-sql
+          configMap:
+            name: datadb-init
+  volumeClaimTemplates:
+    - metadata:
+        name: datadb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+
+---
+# Data Database Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: datadb
+  namespace: dsbd
+spec:
+  selector:
+    app: datadb
+  ports:
+    - port: 3306
+      targetPort: 3306
+  clusterIP: None

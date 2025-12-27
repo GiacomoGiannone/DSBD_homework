@@ -1,0 +1,25 @@
+# Kind cluster configuration
+# Creates a cluster with 1 control-plane and 2 worker nodes
+# Exposes ports for Ingress Controller (80, 443)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: dsbd-cluster
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # Map port 80 for Ingress Controller HTTP traffic
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      # Map port 443 for Ingress Controller HTTPS traffic
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+  - role: worker
+  - role: worker

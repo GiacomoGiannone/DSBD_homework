@@ -1,0 +1,72 @@
+# Alert System - Deployment (Kafka consumer, no external access needed)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-system
+  namespace: dsbd
+  labels:
+    app: alert-system
+spec:
+  replicas: 1  # Single consumer for ordered processing
+  selector:
+    matchLabels:
+      app: alert-system
+  template:
+    metadata:
+      labels:
+        app: alert-system
+    spec:
+      containers:
+        - name: alert-system
+          image: dsbd/alert-system:latest
+          imagePullPolicy: Never
+          env:
+            - name: KAFKA_BROKER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: kafka-broker
+            - name: KAFKA_TOPIC_IN
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: kafka-topic-to-alert
+            - name: KAFKA_TOPIC_OUT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: kafka-topic-to-notifier
+            - name: KAFKA_GROUP_ID
+              value: "alert-system-group"
+            - name: DATA_DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: datadb-host
+            - name: DATA_DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: datadb-port
+            - name: DATA_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: datadb-name
+            - name: DATA_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: db-user
+            - name: DATA_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: db-password
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "25m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"

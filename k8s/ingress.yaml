@@ -1,0 +1,30 @@
+# Ingress resource for DSBD Flight Tracker
+# Routes external traffic to the API Gateway
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dsbd-ingress
+  namespace: dsbd
+  labels:
+    app: dsbd-ingress
+  annotations:
+    # NGINX Ingress Controller annotations
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Rewrite target for clean URLs
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    # Main host rule (can use localhost for Kind)
+    - http:
+        paths:
+          # All traffic goes to the API Gateway
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 80

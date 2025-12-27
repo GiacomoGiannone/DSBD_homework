@@ -1,0 +1,90 @@
+# Alert Notifier - Deployment (Kafka consumer, sends emails)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-notifier
+  namespace: dsbd
+  labels:
+    app: alert-notifier
+spec:
+  replicas: 1  # Single consumer for email sending
+  selector:
+    matchLabels:
+      app: alert-notifier
+  template:
+    metadata:
+      labels:
+        app: alert-notifier
+    spec:
+      containers:
+        - name: alert-notifier
+          image: dsbd/alert-notifier:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: KAFKA_BROKER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: kafka-broker
+            - name: KAFKA_TOPIC_IN
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: kafka-topic-to-notifier
+            - name: KAFKA_GROUP_ID
+              value: "alert-notifier-group"
+            - name: DISABLE_EMAIL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: disable-email
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: smtp-secrets
+                  key: smtp-host
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: smtp-secrets
+                  key: smtp-port
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: smtp-secrets
+                  key: smtp-user
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: smtp-secrets
+                  key: smtp-pass
+            - name: SMTP_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: smtp-secrets
+                  key: smtp-from
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "25m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+
+---
+# Alert Notifier Service (optional, for health checks)
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-notifier
+  namespace: dsbd
+spec:
+  selector:
+    app: alert-notifier
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
