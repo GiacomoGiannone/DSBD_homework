@@ -36,12 +36,12 @@ spec:
             - name: KAFKA_CONTROLLER_LISTENER_NAMES
               value: "CONTROLLER"
             - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: "1@kafka:29093"
+              value: "1@localhost:29093"
             # Listeners
             - name: KAFKA_LISTENERS
               value: "PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093"
             - name: KAFKA_ADVERTISED_LISTENERS
-              value: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092"
+              value: "PLAINTEXT://kafka.dsbd.svc.cluster.local:29092,PLAINTEXT_HOST://kafka.dsbd.svc.cluster.local:9092"
             - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
               value: "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT"
             - name: KAFKA_INTER_BROKER_LISTENER_NAME

@@ -58,15 +58,14 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "200m"
+          # Using TCP socket probe instead of HTTP (no /health endpoint)
           readinessProbe:
-            httpGet:
-              path: /health
+            tcpSocket:
               port: 8081
             initialDelaySeconds: 10
             periodSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /health
+            tcpSocket:
               port: 8081
             initialDelaySeconds: 30
             periodSeconds: 10

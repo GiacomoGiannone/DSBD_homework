@@ -6,7 +6,7 @@ metadata:
   namespace: dsbd
 data:
   # Kafka configuration
-  kafka-broker: "kafka:29092"
+  kafka-broker: "kafka.dsbd.svc.cluster.local:29092"
   kafka-topic-to-alert: "to-alert-system"
   kafka-topic-to-notifier: "to-notifier"
   
@@ -39,11 +39,19 @@ metadata:
 data:
   init.sql: |
     CREATE TABLE IF NOT EXISTS users (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      email VARCHAR(255) NOT NULL UNIQUE,
-      username VARCHAR(100) NOT NULL UNIQUE,
+      email VARCHAR(255) PRIMARY KEY,
+      username VARCHAR(255) NOT NULL UNIQUE,
       password VARCHAR(255) NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      iban VARCHAR(50) DEFAULT NULL,
+      codice_fiscale VARCHAR(16) DEFAULT NULL
+    );
+    
+    CREATE TABLE IF NOT EXISTS request_log (
+      request_id VARCHAR(255) PRIMARY KEY,
+      operation VARCHAR(32) NOT NULL,
+      ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      message VARCHAR(255) DEFAULT NULL,
+      status_code INT DEFAULT NULL
     );
 
 ---
