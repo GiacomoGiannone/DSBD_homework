@@ -68,8 +68,8 @@ def init_kafka_producer():
 		producer_config = {
 			'bootstrap.servers': KAFKA_BROKER,
 			'acks': 'all',
-			'max.in.flight.requests.per.connection': 1,
-			'retries': 3,
+			'max.in.flight.requests.per.connection': 5,
+			'retries': 5,
 			'linger.ms': 10,
 		}
 		producer = Producer(producer_config)

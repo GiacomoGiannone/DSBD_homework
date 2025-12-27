@@ -51,14 +51,15 @@ def main():
     consumer_conf = {
         'bootstrap.servers': KAFKA_BROKER,
         'group.id': GROUP_ID,
-        'auto.offset.reset': 'earliest',
+        'auto.offset.reset': 'latest',
         'enable.auto.commit': True,
     }
     producer_conf = {
         'bootstrap.servers': KAFKA_BROKER,
         'acks': 'all',
         'linger.ms': 10,
-        'max.in.flight.requests.per.connection': 1,
+        'max.in.flight.requests.per.connection': 5,
+        'retries': 5,  
     }
     consumer = Consumer(consumer_conf)
     producer = Producer(producer_conf)

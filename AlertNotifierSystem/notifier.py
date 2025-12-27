@@ -49,7 +49,7 @@ def run_consumer():
     conf = {
         'bootstrap.servers': KAFKA_BROKER,
         'group.id': GROUP_ID,
-        'auto.offset.reset': 'earliest',
+        'auto.offset.reset': 'latest',
         'enable.auto.commit': True,
     }
     consumer = Consumer(conf)
