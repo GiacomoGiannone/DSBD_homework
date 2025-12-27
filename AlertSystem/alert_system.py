@@ -59,7 +59,7 @@ def main():
         'acks': 'all',
         'linger.ms': 10,
         'max.in.flight.requests.per.connection': 5,
-        'retries': 5,  
+                'retries': 5
     }
     consumer = Consumer(consumer_conf)
     producer = Producer(producer_conf)
@@ -92,8 +92,6 @@ def main():
                             'email': email,
                             'airport': airport,
                             'condition': cond,
-                            'departure_count': dep,
-                            'arrival_count': arr,
                             'timestamp': ts,
                         }
                         producer.produce(
