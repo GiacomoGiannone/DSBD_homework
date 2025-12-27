@@ -26,6 +26,16 @@ spec:
             - containerPort: 50052
               name: grpc
           env:
+            - name: CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: opensky-secrets
+                  key: client-id
+            - name: CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: opensky-secrets
+                  key: client-secret
             - name: USER_MANAGER_HOST
               value: "user-manager"
             - name: USER_MANAGER_PORT
