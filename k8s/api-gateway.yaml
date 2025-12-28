@@ -27,6 +27,19 @@ data:
             index index.html index.htm;
             try_files $uri $uri/ /index.html;
         }
+
+        # Favicon handling: serve svg with ico fallback
+        location = /favicon.ico {
+          root /usr/share/nginx/html;
+          log_not_found off;
+          access_log off;
+          try_files /favicon.ico /favicon.svg =404;
+        }
+        location = /favicon.svg {
+          root /usr/share/nginx/html;
+          log_not_found off;
+          access_log off;
+        }
     
         location /registration {
             root /usr/share/nginx/html;

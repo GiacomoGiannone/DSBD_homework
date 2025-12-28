@@ -8,16 +8,32 @@ from fastapi import FastAPI
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
-KAFKA_BROKER = os.getenv('KAFKA_BROKER', 'kafka:29092')
-TOPIC_IN = os.getenv('KAFKA_TOPIC_IN', 'to-notifier')
-GROUP_ID = os.getenv('KAFKA_GROUP_ID', 'alert-notifier-group')
+def _env(name: str, default: str = '') -> str:
+    """Get env var and sanitize by stripping whitespace and quotes."""
+    val = os.getenv(name, default) or ''
+    return val.strip().strip('"').strip("'")
 
-SMTP_HOST = os.getenv('SMTP_HOST', '')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_USER = os.getenv('SMTP_USER', '')
-SMTP_PASS = os.getenv('SMTP_PASS', '')
-SMTP_FROM = os.getenv('SMTP_FROM', SMTP_USER or 'notifier@example.com')
-DISABLE_EMAIL = os.getenv('DISABLE_EMAIL', 'false').lower() == 'true'
+def _env_bool(name: str, default_true: bool = True) -> bool:
+    raw = _env(name, 'true' if default_true else 'false').lower()
+    return raw in ('true', '1', 'yes', 'y')
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(_env(name, str(default)))
+    except Exception:
+        return default
+
+KAFKA_BROKER = _env('KAFKA_BROKER', 'kafka:29092')
+TOPIC_IN = _env('KAFKA_TOPIC_IN', 'to-notifier')
+GROUP_ID = _env('KAFKA_GROUP_ID', 'alert-notifier-group')
+
+SMTP_HOST = _env('SMTP_HOST', '')
+SMTP_PORT = _env_int('SMTP_PORT', 587)
+SMTP_USER = _env('SMTP_USER', '')
+SMTP_PASS = _env('SMTP_PASS', '')
+SMTP_FROM = _env('SMTP_FROM', SMTP_USER or 'notifier@example.com')
+# Default to disabling emails when env var is missing
+DISABLE_EMAIL = _env_bool('DISABLE_EMAIL', default_true=True)
 
 app = FastAPI()
 
@@ -25,11 +41,16 @@ app = FastAPI()
 def send_email(to_addr: str, subject: str, body: str) -> bool:
     # Fallback to mock if disabled or SMTP not configured
     if DISABLE_EMAIL or not SMTP_HOST:
-        if not SMTP_HOST and not DISABLE_EMAIL:
-            logging.warning("SMTP not configured, falling back to mock send")
-        logging.info("[EMAIL MOCK] to=%s subject=%s body=%s", to_addr, subject, body)
+        reason = []
+        if DISABLE_EMAIL:
+            reason.append('DISABLE_EMAIL=true')
+        if not SMTP_HOST:
+            reason.append('SMTP_HOST not set')
+        logging.info("[EMAIL MOCK] (%s) to=%s subject=%s body=%s", ', '.join(reason), to_addr, subject, body)
         return True
     try:
+        # Gmail app passwords are shown with spaces; remove spaces for Gmail hosts
+        pass_for_login = SMTP_PASS.replace(' ', '') if 'gmail.com' in SMTP_HOST else SMTP_PASS
         msg = MIMEText(body)
         msg['Subject'] = subject
         msg['From'] = SMTP_FROM
@@ -37,7 +58,7 @@ def send_email(to_addr: str, subject: str, body: str) -> bool:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
             if SMTP_USER:
-                server.login(SMTP_USER, SMTP_PASS)
+                server.login(SMTP_USER, pass_for_login)
             server.send_message(msg)
         return True
     except Exception as e:
@@ -55,6 +76,7 @@ def run_consumer():
     consumer = Consumer(conf)
     consumer.subscribe([TOPIC_IN])
     logging.info('AlertNotifierSystem consuming from %s', TOPIC_IN)
+    logging.info('Email config: disabled=%s host=%s port=%s user=%s from=%s', DISABLE_EMAIL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_FROM)
     try:
         while True:
             msg = consumer.poll(1.0)

@@ -57,12 +57,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: db-secrets
-                  key: db-user
+                  key: DB_USER
             - name: DATA_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: db-secrets
-                  key: db-password
+                  key: DB_PASSWORD
           resources:
             requests:
               memory: "64Mi"

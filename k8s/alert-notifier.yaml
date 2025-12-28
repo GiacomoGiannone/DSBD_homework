@@ -38,34 +38,35 @@ spec:
               value: "alert-notifier-group"
             - name: DISABLE_EMAIL
               valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: disable-email
+                secretKeyRef:
+                  name: smtp-secrets
+                  key: DISABLE_EMAIL
+                  optional: true
             - name: SMTP_HOST
               valueFrom:
                 secretKeyRef:
                   name: smtp-secrets
-                  key: smtp-host
+                  key: SMTP_HOST
             - name: SMTP_PORT
               valueFrom:
                 secretKeyRef:
                   name: smtp-secrets
-                  key: smtp-port
+                  key: SMTP_PORT
             - name: SMTP_USER
               valueFrom:
                 secretKeyRef:
                   name: smtp-secrets
-                  key: smtp-user
+                  key: SMTP_USER
             - name: SMTP_PASS
               valueFrom:
                 secretKeyRef:
                   name: smtp-secrets
-                  key: smtp-pass
+                  key: SMTP_PASS
             - name: SMTP_FROM
               valueFrom:
                 secretKeyRef:
                   name: smtp-secrets
-                  key: smtp-from
+                  key: SMTP_FROM
           resources:
             requests:
               memory: "64Mi"

@@ -30,41 +30,41 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: opensky-secrets
-                  key: client-id
+                  key: CLIENT_ID
             - name: CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: opensky-secrets
-                  key: client-secret
+                  key: CLIENT_SECRET
             - name: USER_MANAGER_HOST
               value: "user-manager"
             - name: USER_MANAGER_PORT
               value: "50051"
-            - name: DB_HOST
+            - name: DATA_DB_HOST
               valueFrom:
                 configMapKeyRef:
                   name: app-config
                   key: datadb-host
-            - name: DB_PORT
+            - name: DATA_DB_PORT
               valueFrom:
                 configMapKeyRef:
                   name: app-config
                   key: datadb-port
-            - name: DB_NAME
+            - name: DATA_DB_NAME
               valueFrom:
                 configMapKeyRef:
                   name: app-config
                   key: datadb-name
-            - name: DB_USER
+            - name: DATA_DB_USER
               valueFrom:
                 secretKeyRef:
                   name: db-secrets
-                  key: db-user
-            - name: DB_PASSWORD
+                  key: DB_USER
+            - name: DATA_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: db-secrets
-                  key: db-password
+                  key: DB_PASSWORD
             - name: KAFKA_BROKER
               valueFrom:
                 configMapKeyRef:

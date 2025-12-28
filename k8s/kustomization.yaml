@@ -7,7 +7,6 @@ namespace: dsbd
 
 resources:
   - namespace.yaml
-  - secrets.yaml
   - configmaps.yaml
   - userdb.yaml
   - datadb.yaml
@@ -19,6 +18,23 @@ resources:
   - api-gateway.yaml
   - ingress.yaml
 
-commonLabels:
-  project: dsbd-flight-tracker
-  environment: development
+labels:
+  - pairs:
+      project: dsbd-flight-tracker
+      environment: development
+    includeSelectors: true
+
+# Generate secrets from local env file copied by deploy script
+secretGenerator:
+  - name: db-secrets
+    envs:
+      - .secrets.env
+    type: Opaque
+  - name: smtp-secrets
+    envs:
+      - .secrets.env
+    type: Opaque
+  - name: opensky-secrets
+    envs:
+      - .secrets.env
+    type: Opaque

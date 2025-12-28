@@ -19,15 +19,8 @@ data:
   datadb-port: "3306"
   datadb-name: "datadb"
   
-  # OpenSky API configuration
-  opensky-user: ""
-  opensky-pass: ""
-  
   # Refresh interval (12 hours in seconds)
   refresh-interval: "43200"
-  
-  # Email configuration
-  disable-email: "true"
 
 ---
 # Init SQL for User Database

@@ -19,13 +19,15 @@ spec:
       containers:
         - name: user-manager
           image: dsbd/user-manager:latest
-          imagePullPolicy: Never  # Use local image from Kind
+          imagePullPolicy: Never # Use local image from Kind
           ports:
             - containerPort: 8081
               name: http
             - containerPort: 50051
               name: grpc
           env:
+            - name: PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION
+              value: "python"
             - name: DB_HOST
               valueFrom:
                 configMapKeyRef:
@@ -45,12 +47,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: db-secrets
-                  key: db-user
+                  key: DB_USER
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: db-secrets
-                  key: db-password
+                  key: DB_PASSWORD
           resources:
             requests:
               memory: "128Mi"
@@ -58,7 +60,7 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "200m"
-          # Using TCP socket probe instead of HTTP (no /health endpoint)
+          # Using TCP socket probe instead of HTTP (no /health endpoint)    
           readinessProbe:
             tcpSocket:
               port: 8081

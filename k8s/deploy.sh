@@ -47,35 +47,26 @@ kind load docker-image dsbd/alert-system:latest --name dsbd-cluster
 kind load docker-image dsbd/alert-notifier:latest --name dsbd-cluster
 kind load docker-image dsbd/api-gateway:latest --name dsbd-cluster
 
-# Step 5: Apply Kubernetes manifests (in order of dependencies)
+# Step 5: Prepare secrets and apply manifests via Kustomize
 echo -e "\n${YELLOW}[5/6] Applying Kubernetes manifests...${NC}"
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/secrets.yaml
-kubectl apply -f k8s/configmaps.yaml
+echo -e "${GRAY}  - Preparing secrets from .env...${NC}"
+if [ -f .env ]; then
+    cp .env k8s/.secrets.env
+else
+    echo -e "${RED}ERROR: .env file not found in project root. Create it before deploying.${NC}"
+    exit 1
+fi
 
-echo -e "${GRAY}  - Deploying databases...${NC}"
-kubectl apply -f k8s/userdb.yaml
-kubectl apply -f k8s/datadb.yaml
+echo -e "${GRAY}  - Applying kustomization (namespace, configmaps, secrets, services)...${NC}"
+kubectl apply -k k8s/
 
-echo -e "${GRAY}  - Deploying Kafka...${NC}"
-kubectl apply -f k8s/kafka.yaml
+echo -e "${GRAY}  - Cleaning up temporary secrets file...${NC}"
+rm -f k8s/.secrets.env
 
-echo -e "${GRAY}  - Waiting for databases to be ready...${NC}"
-kubectl wait --for=condition=ready pod -l app=userdb -n dsbd --timeout=120s
-kubectl wait --for=condition=ready pod -l app=datadb -n dsbd --timeout=120s
-kubectl wait --for=condition=ready pod -l app=kafka -n dsbd --timeout=120s
-
-echo -e "${GRAY}  - Deploying microservices...${NC}"
-kubectl apply -f k8s/user-manager.yaml
-kubectl apply -f k8s/data-collector.yaml
-kubectl apply -f k8s/alert-system.yaml
-kubectl apply -f k8s/alert-notifier.yaml
-
-echo -e "${GRAY}  - Deploying API Gateway...${NC}"
-kubectl apply -f k8s/api-gateway.yaml
-
-echo -e "${GRAY}  - Deploying Ingress...${NC}"
-kubectl apply -f k8s/ingress.yaml
+echo -e "${GRAY}  - Waiting for core services to be ready...${NC}"
+kubectl wait --for=condition=ready pod -l app=userdb -n dsbd --timeout=120s || true
+kubectl wait --for=condition=ready pod -l app=datadb -n dsbd --timeout=120s || true
+kubectl wait --for=condition=ready pod -l app=kafka -n dsbd --timeout=120s || true
 
 # Step 6: Verify deployment
 echo -e "\n${YELLOW}[6/6] Verifying deployment...${NC}"

@@ -36,35 +36,26 @@ kind load docker-image dsbd/alert-system:latest --name dsbd-cluster
 kind load docker-image dsbd/alert-notifier:latest --name dsbd-cluster
 kind load docker-image dsbd/api-gateway:latest --name dsbd-cluster
 
-# Step 5: Apply Kubernetes manifests (in order of dependencies)
+# Step 5: Prepare secrets and apply manifests via Kustomize
 Write-Host "`n[5/6] Applying Kubernetes manifests..." -ForegroundColor Yellow
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/secrets.yaml
-kubectl apply -f k8s/configmaps.yaml
+Write-Host "  - Preparing secrets from .env..." -ForegroundColor Gray
+if (Test-Path ".\.env") {
+    Copy-Item -Path ".\.env" -Destination ".\k8s\.secrets.env" -Force
+} else {
+    Write-Host "ERROR: .env file not found in project root. Create it before deploying." -ForegroundColor Red
+    exit 1
+}
 
-Write-Host "  - Deploying databases..." -ForegroundColor Gray
-kubectl apply -f k8s/userdb.yaml
-kubectl apply -f k8s/datadb.yaml
+Write-Host "  - Applying kustomization (namespace, configmaps, secrets, services)..." -ForegroundColor Gray
+kubectl apply -k k8s/
 
-Write-Host "  - Deploying Kafka..." -ForegroundColor Gray
-kubectl apply -f k8s/kafka.yaml
+Write-Host "  - Cleaning up temporary secrets file..." -ForegroundColor Gray
+Remove-Item -Path ".\k8s\.secrets.env" -Force
 
-Write-Host "  - Waiting for databases to be ready..." -ForegroundColor Gray
+Write-Host "  - Waiting for core services to be ready..." -ForegroundColor Gray
 kubectl wait --for=condition=ready pod -l app=userdb -n dsbd --timeout=120s
 kubectl wait --for=condition=ready pod -l app=datadb -n dsbd --timeout=120s
 kubectl wait --for=condition=ready pod -l app=kafka -n dsbd --timeout=120s
-
-Write-Host "  - Deploying microservices..." -ForegroundColor Gray
-kubectl apply -f k8s/user-manager.yaml
-kubectl apply -f k8s/data-collector.yaml
-kubectl apply -f k8s/alert-system.yaml
-kubectl apply -f k8s/alert-notifier.yaml
-
-Write-Host "  - Deploying API Gateway..." -ForegroundColor Gray
-kubectl apply -f k8s/api-gateway.yaml
-
-Write-Host "  - Deploying Ingress..." -ForegroundColor Gray
-kubectl apply -f k8s/ingress.yaml
 
 # Step 6: Verify deployment
 Write-Host "`n[6/6] Verifying deployment..." -ForegroundColor Yellow

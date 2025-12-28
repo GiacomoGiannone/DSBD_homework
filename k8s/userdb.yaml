@@ -26,9 +26,19 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: db-secrets
-                  key: mysql-root-password
+                  key: MYSQL_ROOT_PASSWORD
             - name: MYSQL_DATABASE
               value: "userdb"
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: DB_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: DB_PASSWORD
           volumeMounts:
             - name: userdb-data
               mountPath: /var/lib/mysql
