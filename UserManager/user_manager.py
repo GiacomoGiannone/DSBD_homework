@@ -3,15 +3,37 @@ import time
 import logging
 import types
 from concurrent import futures
+import socket
 
 import grpc
 import mysql.connector
 from flask import Flask, request, jsonify, send_from_directory
 import bcrypt
+from prometheus_client import Counter, Gauge, generate_latest, REGISTRY
 
 import UserService_pb2 as pb2
 import UserService_pb2_grpc as pb2_grpc
 import hashlib
+
+# Prometheus metrics
+# Get hostname for node label
+HOSTNAME = socket.gethostname()
+
+# Counter: total requests received 
+# As of now, only api /exists uses this metric
+REQUEST_COUNT = Counter(
+    'user_manager_requests_total',
+    'Total number of requests received',
+    ['service', 'node', 'endpoint', 'method']
+)
+
+# Gauge: response time in seconds 
+# As of now, only api /exists uses this metric
+RESPONSE_TIME = Gauge(
+    'user_manager_response_time_seconds',
+    'Response time of requests in seconds',
+    ['service', 'node', 'endpoint']
+)
 
 #get the system variables from the docker-compose file
 DB_CONFIG = {
@@ -431,6 +453,9 @@ def serve_test_page():
 # will be useful for the data collector
 @app.get("/exists")
 def http_exists():
+	start_time = time.time()
+	REQUEST_COUNT.labels(service='user-manager', node=HOSTNAME, endpoint='/exists', method='GET').inc()
+	
 	identity = (request.args.get("email") or "").strip()
 	username = (request.args.get("username") or "").strip()
 	try:
@@ -446,10 +471,22 @@ def http_exists():
 			close_connection(conn, cur)
 			return jsonify({"error": "email or username required"}), 400
 		close_connection(conn, cur)
-		return jsonify({"exists": bool(exists)})
+		response = jsonify({"exists": bool(exists)})
+		
+		# Record response time
+		duration = time.time() - start_time
+		RESPONSE_TIME.labels(service='user-manager', node=HOSTNAME, endpoint='/exists').set(duration)
+		return response
 	except Exception as e:
 		logging.exception("/exists failed")
 		return jsonify({"error": str(e)}), 500
+
+
+# Prometheus metrics endpoint
+@app.get("/metrics")
+def metrics():
+	return generate_latest(REGISTRY), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
 
 if __name__ == "__main__":
 	logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")

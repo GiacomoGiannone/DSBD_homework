@@ -1,4 +1,37 @@
-# Data Database - StatefulSet + Service
+# Data Database - ConfigMap, StatefulSet, Service
+
+# Init SQL for Data Database
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datadb-init
+  namespace: dsbd
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS interests (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL,
+      airport_code VARCHAR(10) NOT NULL,
+      high_value INT DEFAULT NULL,
+      low_value INT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_interest (email, airport_code)
+    );
+    
+    CREATE TABLE IF NOT EXISTS flights (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      icao24 VARCHAR(20) NOT NULL,
+      callsign VARCHAR(20),
+      departure_airport VARCHAR(10),
+      arrival_airport VARCHAR(10),
+      departure_time BIGINT,
+      arrival_time BIGINT,
+      flight_type ENUM('DEPARTURE', 'ARRIVAL') NOT NULL,
+      last_refresh TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_flight (icao24, departure_time, flight_type)
+    );
+
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

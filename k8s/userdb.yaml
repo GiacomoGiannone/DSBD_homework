@@ -1,4 +1,30 @@
-# User Database - StatefulSet + Service
+# User Database - ConfigMap, StatefulSet, Service
+
+# Init SQL for User Database
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: userdb-init
+  namespace: dsbd
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS users (
+      email VARCHAR(255) PRIMARY KEY,
+      username VARCHAR(255) NOT NULL UNIQUE,
+      password VARCHAR(255) NOT NULL,
+      iban VARCHAR(50) DEFAULT NULL,
+      codice_fiscale VARCHAR(16) DEFAULT NULL
+    );
+    
+    CREATE TABLE IF NOT EXISTS request_log (
+      request_id VARCHAR(255) PRIMARY KEY,
+      operation VARCHAR(32) NOT NULL,
+      ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      message VARCHAR(255) DEFAULT NULL,
+      status_code INT DEFAULT NULL
+    );
+
+---
 # StatefulSet provides stable network identity and persistent storage
 apiVersion: apps/v1
 kind: StatefulSet

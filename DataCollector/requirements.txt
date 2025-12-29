@@ -7,3 +7,4 @@ schedule
 python-dotenv
 flask-cors
 confluent-kafka
+prometheus-client

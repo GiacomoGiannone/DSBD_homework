@@ -27,6 +27,15 @@ wheels/
 .installed.cfg
 *.egg
 
+# Python virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Prometheus generated outputs
+prometheus/metrics_output/
+
 # IDE
 .vscode/
 .idea/

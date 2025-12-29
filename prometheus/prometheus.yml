@@ -1,0 +1,19 @@
+# Prometheus configuration for DSBD Flight Tracker
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # UserManager metrics
+  - job_name: 'user-manager'
+    static_configs:
+      - targets: ['user-manager:8081']
+        labels:
+          service: 'user-manager'
+
+  # DataCollector metrics
+  - job_name: 'data-collector'
+    static_configs:
+      - targets: ['data-collector:8082']
+        labels:
+          service: 'data-collector'

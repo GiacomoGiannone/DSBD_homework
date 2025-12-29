@@ -17,6 +17,7 @@ resources:
   - alert-notifier.yaml
   - api-gateway.yaml
   - ingress.yaml
+  - prometheus.yaml
 
 labels:
   - pairs:

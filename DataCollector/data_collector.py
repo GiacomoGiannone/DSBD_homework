@@ -6,6 +6,7 @@ from concurrent import futures
 import requests
 import mysql.connector
 import grpc
+import socket
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from datetime import datetime, timedelta
@@ -14,9 +15,30 @@ from io import StringIO
 import json
 from confluent_kafka import Producer
 from circuit_breaker import CircuitBreaker, CircuitBreakerOpenException
+from prometheus_client import Counter, Gauge, generate_latest, REGISTRY
 
 import DataCollector_pb2 as pb2
 import DataCollector_pb2_grpc as pb2_grpc
+
+# Prometheus metrics
+HOSTNAME = socket.gethostname()
+
+# Counter: total requests
+# As of now, only api /refresh uses this metric
+REQUEST_COUNT = Counter(
+    'data_collector_requests_total',
+    'Total number of requests received',
+    ['service', 'node', 'endpoint', 'method']
+)
+
+# Gauge: OpenSky API response time
+# As of now, only api /refresh and refresh_flight function uses this metric
+# The first one measures the entire /refresh call duration, the second measures individual OpenSky API calls
+OPENSKY_RESPONSE_TIME = Gauge(
+    'data_collector_opensky_response_time_seconds',
+    'Response time of OpenSky API calls in seconds',
+    ['service', 'node', 'airport']
+)
 
 # User Manager HTTP endpoint for existence checks
 USER_MANAGER_HOST = os.getenv("USER_MANAGER_HOST", "user-manager")
@@ -257,8 +279,13 @@ def refresh_flights(airports):
 	for code in airports:
 		dep_url = "https://opensky-network.org/api/flights/departure"
 		arr_url = "https://opensky-network.org/api/flights/arrival"
+		
+		# Measure OpenSky API response time
+		start_time = time.time()
 		departures = opensky_get_with_breaker(dep_url, {"airport": code, "begin": begin, "end": end}) or []
 		arrivals = opensky_get_with_breaker(arr_url, {"airport": code, "begin": begin, "end": end}) or []
+		duration = time.time() - start_time
+		OPENSKY_RESPONSE_TIME.labels(service='data-collector', node=HOSTNAME, airport=code).set(duration)
 		
 		dep_count = 0
 		arr_count = 0
@@ -692,10 +719,18 @@ if __name__ == '__main__':
 
 	@app.post('/api/refresh')
 	def api_refresh():
+		start_time = time.time()
+		REQUEST_COUNT.labels(service='data-collector', node=HOSTNAME, endpoint='/api/refresh', method='POST').inc()
+		
 		data = request.get_json(silent=True) or {}
 		email = (data.get('email') or '').strip()
 		svc = DataCollectorService()
 		res = svc.RefreshFlights(type('Req', (), {'email': email})(), None)
+		
+		duration = time.time() - start_time
+		# Using OPENSKY_RESPONSE_TIME for overall refresh duration as well
+		OPENSKY_RESPONSE_TIME.labels(service='data-collector', node=HOSTNAME, airport='refresh_all').set(duration)
+		
 		return jsonify({'refreshed_count': res.refreshed_count, 'message': res.message})
 	
 	@app.post('/api/average_flights_per_day')
@@ -899,6 +934,10 @@ if __name__ == '__main__':
 		}
 		
 		return jsonify(result)
+
+	@app.get('/metrics')
+	def metrics():
+		return generate_latest(REGISTRY), 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 	@app.get('/data_test')
 	def data_test_page():
